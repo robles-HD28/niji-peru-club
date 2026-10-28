@@ -1,0 +1,19 @@
+{
+  "name": "niji-peru-loyalty",
+  "version": "1.0.0",
+  "description": "PWA de fidelización de clientes para NIJI Perú con roles Cliente y Administrador",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "seed": "node server/seed.js"
+  },
+  "keywords": ["pwa", "loyalty", "gamification", "peru", "stamps", "spin-to-win"],
+  "author": "NIJI Perú Team",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

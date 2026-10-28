@@ -1,0 +1,17 @@
+# Dependencias
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Base de datos local (se autogenera con npm start / node server/seed.js)
+server/database.sqlite
+server/database.sqlite-journal
+
+# Variables de entorno
+.env
+.env.local
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db

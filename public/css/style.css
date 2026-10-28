@@ -1,0 +1,393 @@
+/* ==========================================================================
+   NIJI Perú Loyalty App - Tema Claro & Colores Pastel Oficiales (Kawaii Clean)
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+  /* Tonos del Logo NIJI en versión Pastel / Suave */
+  --niji-red: #ff4d5a;
+  --niji-red-pastel: #ffe4e6;
+  --niji-red-light: #fff1f2;
+  
+  --niji-orange: #ff7e29;
+  --niji-orange-pastel: #ffedd5;
+  --niji-orange-light: #fff7ed;
+  
+  --niji-yellow: #f59e0b;
+  --niji-yellow-pastel: #fef3c7;
+  --niji-yellow-light: #fffbeb;
+  
+  --niji-teal: #0d9488;
+  --niji-teal-pastel: #ccfbf1;
+  --niji-teal-light: #f0fdfa;
+  
+  --niji-pink: #f43f5e;
+  --niji-pink-pastel: #ffe4e6;
+
+  /* Fondo Claro Limpio y Superficies */
+  --bg-light: #f8fafc;
+  --bg-surface: #ffffff;
+  --card-bg: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-subtle: #e2e8f0;
+  --border-focus: #fdba74;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-light);
+  color: var(--text-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+  /* Fondo claro con sutiles gradientes pastel */
+  background-image: 
+    radial-gradient(circle at 10% 10%, rgba(255, 237, 213, 0.6) 0%, transparent 40%),
+    radial-gradient(circle at 90% 20%, rgba(204, 251, 241, 0.6) 0%, transparent 40%),
+    radial-gradient(circle at 50% 90%, rgba(254, 243, 199, 0.5) 0%, transparent 45%);
+  background-attachment: fixed;
+}
+
+h1, h2, h3, h4, .font-heading {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Scrollbar estética */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Tarjetas y Paneles Claros con Sombra Suave */
+.glass-panel {
+  background: #ffffff;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+}
+
+.glass-input {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  color: #0f172a;
+  transition: all 0.2s ease;
+}
+
+.glass-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+}
+
+.glass-input::placeholder {
+  color: #94a3b8;
+}
+
+/* Contenedor del Simulador Móvil */
+.phone-viewport {
+  width: 100%;
+  max-width: 440px;
+  min-height: 100vh;
+  margin: 0 auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.08);
+}
+
+@media (min-width: 768px) {
+  body.mobile-frame-active .phone-viewport {
+    min-height: 844px;
+    height: 844px;
+    max-height: 92vh;
+    margin: 20px auto;
+    border-radius: 46px;
+    border: 10px solid #1e293b;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+  }
+}
+
+/* Tarjeta de Sellos VIP - Estilo Pastel Claro Premium */
+.stamp-card-vip {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 50%, #f0fdfa 100%);
+  border: 2px solid #fed7aa;
+  box-shadow: 0 12px 30px -5px rgba(249, 115, 22, 0.12), 0 4px 12px rgba(13, 148, 136, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.stamp-card-vip::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(254, 215, 170, 0.25) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* Casillero de Sello Pastel */
+.stamp-slot {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.stamp-slot.empty {
+  border: 2px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.stamp-slot.stamped {
+  border: 2px solid #ffffff;
+  background: linear-gradient(135deg, #ff6b00 0%, #ff8c38 100%);
+  box-shadow: 0 6px 16px rgba(255, 107, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+  animation: stampHit 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.stamp-slot.special-reward {
+  border: 2px dashed #f59e0b;
+  background: #fffbeb;
+}
+
+.stamp-slot.special-reward.stamped {
+  border: 2px solid #ffffff;
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.5);
+}
+
+@keyframes stampHit {
+  0% {
+    transform: scale(2.2) rotate(-20deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.9) rotate(5deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(-4deg);
+    opacity: 1;
+  }
+}
+
+/* Tarjeta Bloqueada */
+.card-locked {
+  border-color: #fbbf24 !important;
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.3);
+}
+
+/* Cupón Digital Pastel */
+.digital-coupon {
+  background: #ffffff;
+  border: 2px dashed #f97316;
+  position: relative;
+  box-shadow: 0 10px 25px -5px rgba(249, 115, 22, 0.15);
+}
+
+.digital-coupon::before,
+.digital-coupon::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  background-color: #ffffff;
+  border: 1px solid #fed7aa;
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+
+.digital-coupon::before {
+  left: -11px;
+}
+
+.digital-coupon::after {
+  right: -11px;
+}
+
+/* Ruleta Canvas */
+.roulette-container {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  margin: 0 auto;
+}
+
+.roulette-pointer {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 42px;
+  z-index: 20;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
+}
+
+/* Botón Principal Gradiente Cálido NIJI */
+.btn-primary {
+  background: linear-gradient(135deg, #ff4d5a 0%, #ff7e29 50%, #f59e0b 100%);
+  color: white;
+  font-weight: 800;
+  border: none;
+  box-shadow: 0 6px 18px -2px rgba(255, 126, 41, 0.4);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px -2px rgba(255, 126, 41, 0.5);
+  filter: brightness(1.03);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
+/* Botón Turquesa */
+.btn-teal {
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+  color: white;
+  font-weight: 800;
+  box-shadow: 0 6px 18px -2px rgba(13, 148, 136, 0.35);
+}
+
+.btn-teal:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px -2px rgba(13, 148, 136, 0.5);
+}
+
+.btn-admin {
+  background: linear-gradient(135deg, #0d9488 0%, #0284c7 100%);
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 6px 18px -2px rgba(13, 148, 136, 0.35);
+}
+
+.btn-admin:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px -2px rgba(13, 148, 136, 0.45);
+}
+
+/* Toasts Flotantes */
+#toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 380px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  padding: 14px 18px;
+  border-radius: 18px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(12px);
+  animation: slideInToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideInToast {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast.success {
+  background: #ffffff;
+  color: #0f766e;
+  border: 1.5px solid #99f6e4;
+}
+
+.toast.error {
+  background: #ffffff;
+  color: #be123c;
+  border: 1.5px solid #fecdd3;
+}
+
+.toast.info {
+  background: #ffffff;
+  color: #334155;
+  border: 1.5px solid #e2e8f0;
+}
+
+/* Efecto Sticker Kawaii */
+.logo-sticker {
+  filter: drop-shadow(0 6px 12px rgba(255, 126, 41, 0.2));
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.logo-sticker:hover {
+  transform: scale(1.05) rotate(-1deg);
+}
+
+/* Confetti canvas */
+#confetti-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9998;
+}
+
+.pulse-glow {
+  animation: pulseGlowAnim 2s infinite;
+}
+
+@keyframes pulseGlowAnim {
+  0%, 100% {
+    box-shadow: 0 6px 18px -2px rgba(255, 126, 41, 0.4);
+  }
+  50% {
+    box-shadow: 0 10px 28px -2px rgba(255, 77, 90, 0.6);
+  }
+}

@@ -1,0 +1,339 @@
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { db } = require('../db');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../middleware/auth');
+const { getBirthdayStatus } = require('../utils/birthday');
+
+/**
+ * Registro de Cliente (Vista Cliente)
+ * Campos: Pseudónimo, Correo electrónico, Fecha de nacimiento, Contraseña y Confirmación de contraseña
+ */
+function register(req, res) {
+  try {
+    const { pseudonym, email, birthdate, password, confirmPassword } = req.body;
+
+    // 1. Validaciones de presencia
+    if (!pseudonym || !email || !birthdate || !password || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Todos los campos son obligatorios: Pseudónimo, Correo electrónico, Fecha de nacimiento, Contraseña y Confirmación.'
+      });
+    }
+
+    const cleanPseudonym = pseudonym.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanBirthdate = birthdate.trim();
+
+    // 2. Validación de formato de pseudónimo (3 a 25 caracteres, sin espacios intermedios)
+    if (cleanPseudonym.length < 3 || cleanPseudonym.length > 25) {
+      return res.status(400).json({
+        success: false,
+        message: 'El pseudónimo debe contener entre 3 y 25 caracteres.'
+      });
+    }
+
+    if (/\s/.test(cleanPseudonym)) {
+      return res.status(400).json({
+        success: false,
+        message: 'El pseudónimo no puede contener espacios en blanco. Usa guiones bajos (_) si lo deseas.'
+      });
+    }
+
+    // 3. Validación de correo electrónico
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ingresa un formato de correo electrónico válido.'
+      });
+    }
+
+    // 4. Validación de fecha de nacimiento (YYYY-MM-DD y edad lógica)
+    const birthDateObj = new Date(cleanBirthdate);
+    if (isNaN(birthDateObj.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de fecha de nacimiento inválido. Debe ser AAAA-MM-DD.'
+      });
+    }
+
+    const today = new Date();
+    if (birthDateObj >= today) {
+      return res.status(400).json({
+        success: false,
+        message: 'La fecha de nacimiento debe ser anterior al día de hoy.'
+      });
+    }
+
+    // 5. Validación de contraseña
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'La contraseña debe tener al menos 6 caracteres.'
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Las contraseñas no coinciden. Por favor, revísalas.'
+      });
+    }
+
+    // 6. Verificar duplicados (Pseudónimo o Correo)
+    const existingUser = db.prepare(`
+      SELECT id, pseudonym, email FROM users
+      WHERE pseudonym = ? COLLATE NOCASE OR email = ? COLLATE NOCASE
+    `).get(cleanPseudonym, cleanEmail);
+
+    if (existingUser) {
+      if (existingUser.pseudonym.toLowerCase() === cleanPseudonym.toLowerCase()) {
+        return res.status(409).json({
+          success: false,
+          message: `El pseudónimo "${cleanPseudonym}" ya está en uso. Elige otro.`
+        });
+      }
+      return res.status(409).json({
+        success: false,
+        message: 'Ya existe una cuenta registrada con este correo electrónico.'
+      });
+    }
+
+    // 7. Hash de contraseña
+    const salt = bcrypt.genSaltSync(10);
+    const passwordHash = bcrypt.hashSync(password, salt);
+
+    // 8. Inserción en la base de datos (con rol client y 0 sellos)
+    const result = db.prepare(`
+      INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize)
+      VALUES (?, ?, ?, ?, 'client', 0, 0, NULL)
+    `).run(cleanPseudonym, cleanEmail, cleanBirthdate, passwordHash);
+
+    const newUserId = Number(result.lastInsertRowid);
+
+    // 9. Generar Token JWT
+    const token = jwt.sign(
+      { id: newUserId, pseudonym: cleanPseudonym, role: 'client' },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    const birthdayInfo = getBirthdayStatus(cleanBirthdate);
+
+    return res.status(201).json({
+      success: true,
+      message: '¡Registro exitoso! Bienvenido a NIJI Perú.',
+      token,
+      user: {
+        id: newUserId,
+        pseudonym: cleanPseudonym,
+        email: cleanEmail,
+        birthdate: cleanBirthdate,
+        role: 'client',
+        stamps: 0,
+        has_spun_wheel: 0,
+        welcome_prize: null,
+        birthdayInfo
+      },
+      must_spin_wheel: true // Redirección por única vez a la ruleta Spin-to-Win
+    });
+
+  } catch (error) {
+    console.error('Error en register:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno en el servidor al registrar usuario.'
+    });
+  }
+}
+
+/**
+ * Inicio de Sesión de Cliente (Vista Cliente)
+ * Acceso exclusivo mediante Pseudónimo y Contraseña
+ */
+function loginClient(req, res) {
+  try {
+    const { pseudonym, password } = req.body;
+
+    if (!pseudonym || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Por favor, ingresa tu pseudónimo y contraseña.'
+      });
+    }
+
+    const cleanPseudonym = pseudonym.trim();
+
+    const user = db.prepare(`
+      SELECT * FROM users WHERE pseudonym = ? COLLATE NOCASE
+    `).get(cleanPseudonym);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciales inválidas. Revisa tu pseudónimo y contraseña.'
+      });
+    }
+
+    // Verificar si intentó entrar un admin por el portal de clientes
+    if (user.role !== 'client') {
+      return res.status(403).json({
+        success: false,
+        message: 'Esta cuenta pertenece al personal. Utiliza el portal de Administración (/admin).'
+      });
+    }
+
+    const isMatch = bcrypt.compareSync(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciales inválidas. Revisa tu pseudónimo y contraseña.'
+      });
+    }
+
+    // Generar Token JWT
+    const token = jwt.sign(
+      { id: user.id, pseudonym: user.pseudonym, role: user.role },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    const birthdayInfo = getBirthdayStatus(user.birthdate);
+
+    return res.json({
+      success: true,
+      message: `¡Hola de nuevo, ${user.pseudonym}!`,
+      token,
+      user: {
+        id: user.id,
+        pseudonym: user.pseudonym,
+        email: user.email,
+        birthdate: user.birthdate,
+        role: user.role,
+        stamps: user.stamps,
+        has_spun_wheel: user.has_spun_wheel,
+        welcome_prize: user.welcome_prize,
+        birthdayInfo
+      },
+      must_spin_wheel: user.has_spun_wheel === 0
+    });
+
+  } catch (error) {
+    console.error('Error en loginClient:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno en el servidor al iniciar sesión.'
+    });
+  }
+}
+
+/**
+ * Inicio de Sesión de Administrador / Cajero (Vista Admin)
+ * Portal exclusivo para el personal de tienda
+ */
+function loginAdmin(req, res) {
+  try {
+    const { pseudonym, password } = req.body;
+
+    if (!pseudonym || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ingresa el usuario de personal y contraseña.'
+      });
+    }
+
+    const cleanPseudonym = pseudonym.trim();
+
+    const user = db.prepare(`
+      SELECT * FROM users WHERE pseudonym = ? COLLATE NOCASE
+    `).get(cleanPseudonym);
+
+    if (!user || user.role !== 'admin') {
+      return res.status(401).json({
+        success: false,
+        message: 'Acceso no autorizado. Credenciales de personal inválidas.'
+      });
+    }
+
+    const isMatch = bcrypt.compareSync(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Acceso no autorizado. Credenciales de personal inválidas.'
+      });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, pseudonym: user.pseudonym, role: user.role },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Bienvenido al Portal de Administración NIJI Perú.',
+      token,
+      user: {
+        id: user.id,
+        pseudonym: user.pseudonym,
+        email: user.email,
+        role: user.role
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en loginAdmin:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al iniciar sesión de administrador.'
+    });
+  }
+}
+
+/**
+ * Obtener perfil del usuario en sesión actual (/api/auth/me)
+ */
+function getMe(req, res) {
+  try {
+    const user = req.user;
+    const birthdayInfo = getBirthdayStatus(user.birthdate);
+
+    // Obtener cupón activo si tiene
+    const activeCoupon = db.prepare(`
+      SELECT id, code, title, description, status, created_at
+      FROM coupons
+      WHERE user_id = ? AND status = 'active'
+      ORDER BY id DESC LIMIT 1
+    `).get(user.id);
+
+    return res.json({
+      success: true,
+      user: {
+        id: user.id,
+        pseudonym: user.pseudonym,
+        email: user.email,
+        birthdate: user.birthdate,
+        role: user.role,
+        stamps: user.stamps,
+        has_spun_wheel: user.has_spun_wheel,
+        welcome_prize: user.welcome_prize,
+        birthdayInfo
+      },
+      activeCoupon: activeCoupon || null,
+      businessRule: 'Se otorga un sello por compras desde S/10 y la actualización se procesa al cierre del día.'
+    });
+  } catch (error) {
+    console.error('Error en getMe:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al recuperar perfil de usuario.'
+    });
+  }
+}
+
+module.exports = {
+  register,
+  loginClient,
+  loginAdmin,
+  getMe
+};
