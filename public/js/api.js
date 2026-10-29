@@ -97,7 +97,7 @@ const API = (() => {
 
     // Administración
     getAdminMetrics: () => request('/admin/metrics', { method: 'GET' }),
-    searchClients: (q = '') => request(`/admin/clients?q=${encodeURIComponent(q)}`, { method: 'GET' }),
+    searchClients: (q = '', filter = 'all') => request(`/admin/clients?q=${encodeURIComponent(q)}&filter=${encodeURIComponent(filter)}`, { method: 'GET' }),
     getClientDetail: (id) => request(`/admin/clients/${id}`, { method: 'GET' }),
     addStamp: (payload) => request('/admin/stamps/add', { method: 'POST', body: JSON.stringify(payload) }),
     resetClientCard: (payload) => request('/admin/stamps/reset', { method: 'POST', body: JSON.stringify(payload) }),

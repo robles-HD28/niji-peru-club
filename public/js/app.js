@@ -871,18 +871,22 @@ async function renderAdminDashboardView(container) {
       </div>
 
       <!-- Tarjetas de Métricas -->
-      <div class="grid grid-cols-3 gap-2">
-        <div class="glass-panel p-3 rounded-2xl text-center">
-          <span class="text-[10px] text-slate-500 block font-bold">Clientes</span>
-          <span id="metric-total-clients" class="text-lg font-black text-slate-900">${m.totalClients}</span>
+      <div class="grid grid-cols-4 gap-1.5 sm:gap-2">
+        <div class="glass-panel p-2.5 rounded-2xl text-center">
+          <span class="text-[9px] text-slate-500 block font-bold">Clientes</span>
+          <span id="metric-total-clients" class="text-base font-black text-slate-900">${m.totalClients}</span>
         </div>
-        <div class="glass-panel p-3 rounded-2xl text-center">
-          <span class="text-[10px] text-orange-600 block font-bold">Tarjetas 5/5</span>
-          <span id="metric-cards-completed" class="text-lg font-black text-orange-600">${m.cardsCompleted}</span>
+        <div class="glass-panel p-2.5 rounded-2xl text-center cursor-pointer hover:border-amber-300 transition" onclick="setClientsFilter('birthday_today')" title="Ver cumpleañeros de hoy">
+          <span class="text-[9px] text-amber-700 block font-bold">🎂 Cumple</span>
+          <span id="metric-birthday-today" class="text-base font-black text-amber-600">${m.birthdaysToday || 0}</span>
         </div>
-        <div class="glass-panel p-3 rounded-2xl text-center">
-          <span class="text-[10px] text-teal-700 block font-bold">Sellos Hoy</span>
-          <span id="metric-today-stamps" class="text-lg font-black text-teal-700">${m.todayStamps}</span>
+        <div class="glass-panel p-2.5 rounded-2xl text-center">
+          <span class="text-[9px] text-orange-600 block font-bold">Tarjetas 5/5</span>
+          <span id="metric-cards-completed" class="text-base font-black text-orange-600">${m.cardsCompleted}</span>
+        </div>
+        <div class="glass-panel p-2.5 rounded-2xl text-center">
+          <span class="text-[9px] text-teal-700 block font-bold">Sellos Hoy</span>
+          <span id="metric-today-stamps" class="text-base font-black text-teal-700">${m.todayStamps}</span>
         </div>
       </div>
 
@@ -900,17 +904,41 @@ async function renderAdminDashboardView(container) {
 
       <!-- PESTAÑA 1: GESTIÓN DE CLIENTES Y SELLOS -->
       <div id="admin-section-clients" class="glass-panel p-4 rounded-3xl space-y-3">
-        <div class="flex items-center justify-between">
-          <label class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-            <span>🔍</span>
-            <span>Buscador Rápido de Clientes</span>
-          </label>
-          <span class="text-[10px] text-orange-600 font-black">Por Pseudónimo</span>
+        <div class="flex items-center justify-between pb-0.5">
+          <div>
+            <label class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <span>👥</span>
+              <span>Directorio de Clientes</span>
+            </label>
+            <p class="text-[10px] text-slate-400 font-medium">Buscador y asignación en caja</p>
+          </div>
+
+          <!-- Botón de Exportar CSV para Email Marketing y Base de Datos -->
+          <button id="btn-export-csv" onclick="downloadClientsCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-1 transition shadow-xs cursor-pointer" title="Descargar base de datos completa compatible con Excel">
+            <span>📥</span>
+            <span>Exportar CSV</span>
+          </button>
         </div>
 
+        <!-- Buscador -->
         <div class="relative">
           <span class="absolute left-3.5 top-2.5 text-orange-500 font-black text-xs">@</span>
-          <input type="text" id="admin-search-input" placeholder="Buscar por pseudónimo (ej: sakura)..." class="glass-input w-full pl-8 pr-4 py-2 rounded-2xl text-xs" />
+          <input type="text" id="admin-search-input" placeholder="Buscar por pseudónimo o correo..." class="glass-input w-full pl-8 pr-4 py-2 rounded-2xl text-xs" />
+        </div>
+
+        <!-- Filtros Rápidos de Cumpleaños & Segmentación -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] font-bold">
+          <button id="filter-btn-all" onclick="setClientsFilter('all')" class="px-2.5 py-1 rounded-xl bg-orange-500 text-white shadow-2xs transition">
+            Todos
+          </button>
+          <button id="filter-btn-today" onclick="setClientsFilter('birthday_today')" class="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 hover:text-amber-800 hover:bg-amber-50 transition flex items-center gap-1">
+            <span>🎂</span>
+            <span>Cumple Hoy</span>
+          </button>
+          <button id="filter-btn-month" onclick="setClientsFilter('birthday_month')" class="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 hover:text-teal-800 hover:bg-teal-50 transition flex items-center gap-1">
+            <span>🎈</span>
+            <span>Cumple en el Mes</span>
+          </button>
         </div>
 
         <div id="clients-list-container" class="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -992,7 +1020,7 @@ async function renderAdminDashboardView(container) {
     </div>
   `;
 
-  loadAdminClients('');
+  loadAdminClients('', 'all');
 
   let searchTimeout;
   const searchInput = document.getElementById('admin-search-input');
@@ -1000,9 +1028,79 @@ async function renderAdminDashboardView(container) {
     searchInput.addEventListener('input', (e) => {
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
-        loadAdminClients(e.target.value);
+        loadAdminClients(e.target.value, currentAdminClientsFilter);
       }, 250);
     });
+  }
+}
+
+let currentAdminClientsFilter = 'all';
+
+function setClientsFilter(filterType) {
+  currentAdminClientsFilter = filterType;
+
+  const btnAll = document.getElementById('filter-btn-all');
+  const btnToday = document.getElementById('filter-btn-today');
+  const btnMonth = document.getElementById('filter-btn-month');
+
+  if (btnAll) {
+    btnAll.className = filterType === 'all'
+      ? 'px-2.5 py-1 rounded-xl bg-orange-500 text-white shadow-2xs transition'
+      : 'px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition';
+  }
+  if (btnToday) {
+    btnToday.className = filterType === 'birthday_today'
+      ? 'px-2.5 py-1 rounded-xl bg-amber-500 text-white shadow-2xs transition flex items-center gap-1 font-bold'
+      : 'px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 hover:text-amber-800 hover:bg-amber-50 transition flex items-center gap-1';
+  }
+  if (btnMonth) {
+    btnMonth.className = filterType === 'birthday_month'
+      ? 'px-2.5 py-1 rounded-xl bg-teal-600 text-white shadow-2xs transition flex items-center gap-1 font-bold'
+      : 'px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 hover:text-teal-800 hover:bg-teal-50 transition flex items-center gap-1';
+  }
+
+  const searchVal = document.getElementById('admin-search-input')?.value || '';
+  loadAdminClients(searchVal, filterType);
+}
+
+async function downloadClientsCSV() {
+  const btn = document.getElementById('btn-export-csv');
+  const originalHTML = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span> Exportando...`;
+  }
+  try {
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/admin/clients/export', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Error al exportar base de datos');
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clientes_niji_directorio_${new Date().toISOString().substring(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    showToast('¡Directorio descargado en CSV / Excel!', 'success');
+  } catch (e) {
+    showToast(e.message || 'No se pudo exportar la base de datos.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }
   }
 }
 
@@ -1014,25 +1112,33 @@ async function refreshAdminMetrics() {
       const elClients = document.getElementById('metric-total-clients');
       const elCompleted = document.getElementById('metric-cards-completed');
       const elToday = document.getElementById('metric-today-stamps');
+      const elBirthdays = document.getElementById('metric-birthday-today');
       if (elClients) elClients.textContent = m.totalClients;
       if (elCompleted) elCompleted.textContent = m.cardsCompleted;
       if (elToday) elToday.textContent = m.todayStamps;
+      if (elBirthdays) elBirthdays.textContent = m.birthdaysToday || 0;
     }
   } catch (e) {}
 }
 
-async function loadAdminClients(query = '') {
+async function loadAdminClients(query = '', filter = currentAdminClientsFilter) {
   const container = document.getElementById('clients-list-container');
   if (!container) return;
 
   try {
-    const res = await API.searchClients(query);
+    const res = await API.searchClients(query, filter);
     const clients = res.clients || [];
 
     if (clients.length === 0) {
+      let emptyMsg = `No se encontraron clientes con "${query}".`;
+      if (filter === 'birthday_today') {
+        emptyMsg = '🎂 No hay clientes que cumplan años el día de hoy.';
+      } else if (filter === 'birthday_month') {
+        emptyMsg = '🎈 No hay clientes registrados que cumplan años este mes.';
+      }
       container.innerHTML = `
-        <div class="text-center py-6 text-xs text-slate-500 font-medium">
-          No se encontraron clientes con "${query}".
+        <div class="text-center py-6 text-xs text-slate-500 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+          ${emptyMsg}
         </div>
       `;
       return;
@@ -1041,14 +1147,17 @@ async function loadAdminClients(query = '') {
     container.innerHTML = clients.map(c => {
       const safeId = String(c.id || c.pseudonym).replace(/'/g, "\\'");
       const safePseudo = String(c.pseudonym).replace(/'/g, "\\'");
+      const hasOptIn = (c.accepts_promotions !== 0 && c.accepts_promotions !== false);
 
       return `
       <div class="p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-orange-200 transition flex items-center justify-between gap-2 shadow-2xs">
         <div class="space-y-0.5 cursor-pointer flex-1" onclick="navigateTo('#admin-cliente/${encodeURIComponent(c.id || c.pseudonym)}')">
-          <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <span class="font-bold text-xs text-slate-900">@${c.pseudonym}</span>
             <span class="text-[10px] text-slate-400 font-medium">🎂 ${c.birthdate || '-'}</span>
-            ${c.isBirthdayToday ? '<span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-bold">¡Cumple Hoy!</span>' : ''}
+            ${c.isBirthdayToday ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-bold animate-pulse">🎂 ¡Cumple Hoy!</span>' : ''}
+            ${c.isBirthdayMonth && !c.isBirthdayToday ? '<span class="text-[10px] px-1.5 py-0.2 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-semibold">🎈 Mes Cumple</span>' : ''}
+            ${hasOptIn ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium" title="Acepta promociones por correo">✉️ Opt-in</span>' : ''}
           </div>
           <div class="flex items-center gap-2 text-[10px] text-slate-500 flex-wrap">
             <span>${c.email}</span>
@@ -1489,3 +1598,8 @@ async function deactivateAdminPromotion(id, btnElement) {
 async function deleteAdminPromotion(id) {
   return deactivateAdminPromotion(id);
 }
+
+// Exponer funciones globales para eventos inline del DOM
+window.downloadClientsCSV = downloadClientsCSV;
+window.setClientsFilter = setClientsFilter;
+window.deactivateAdminPromotion = deactivateAdminPromotion;

@@ -9,6 +9,7 @@ const { getBirthdayStatus } = require('../utils/birthday');
 async function searchClients(req, res) {
   try {
     const query = (req.query.q || '').trim();
+    const filter = (req.query.filter || 'all').toLowerCase(); // 'all', 'birthday_today', 'birthday_month'
     let clients = [];
 
     if (firestore.isFirestoreConfigured()) {
@@ -23,12 +24,12 @@ async function searchClients(req, res) {
         }
       });
 
-      // Ordenar: recientes primero o coincidencia exacta al inicio
+      // Ordenar: recientes primero
       const sorted = allClients.sort((a, b) => {
         return new Date(b.created_at || 0) - new Date(a.created_at || 0);
       });
 
-      clients = sorted.slice(0, 30).map(c => {
+      let mapped = sorted.map(c => {
         const birthday = getBirthdayStatus(c.birthdate);
         const userKey = (c.pseudonym || '').toLowerCase();
         return {
@@ -44,41 +45,59 @@ async function searchClients(req, res) {
           active_coupons_count: activeCouponsMap[userKey] || 0,
           isBirthdayToday: birthday.isBirthdayToday,
           isBirthdayMonth: birthday.isBirthdayMonth,
+          daysUntilBirthday: birthday.daysUntilBirthday,
           greetingMessage: birthday.greetingMessage
         };
       });
+
+      if (filter === 'birthday_today') {
+        mapped = mapped.filter(c => c.isBirthdayToday);
+      } else if (filter === 'birthday_month') {
+        mapped = mapped.filter(c => c.isBirthdayMonth);
+      }
+
+      clients = mapped.slice(0, 100);
     } else {
       let sqliteClients;
       if (!query) {
         sqliteClients = db.prepare(`
-          SELECT u.id, u.pseudonym, u.email, u.birthdate, u.stamps, u.has_spun_wheel, u.welcome_prize, u.created_at,
+          SELECT u.id, u.pseudonym, u.email, u.birthdate, u.stamps, u.has_spun_wheel, u.welcome_prize, u.accepts_promotions, u.created_at,
                  (SELECT COUNT(*) FROM coupons c WHERE c.user_id = u.id AND c.status = 'active') AS active_coupons_count
           FROM users u
           WHERE u.role = 'client'
           ORDER BY u.id DESC
-          LIMIT 25
+          LIMIT 100
         `).all();
       } else {
         sqliteClients = db.prepare(`
-          SELECT u.id, u.pseudonym, u.email, u.birthdate, u.stamps, u.has_spun_wheel, u.welcome_prize, u.created_at,
+          SELECT u.id, u.pseudonym, u.email, u.birthdate, u.stamps, u.has_spun_wheel, u.welcome_prize, u.accepts_promotions, u.created_at,
                  (SELECT COUNT(*) FROM coupons c WHERE c.user_id = u.id AND c.status = 'active') AS active_coupons_count
           FROM users u
           WHERE u.role = 'client'
             AND (u.pseudonym LIKE ? OR u.email LIKE ? OR u.birthdate LIKE ?)
           ORDER BY u.pseudonym ASC
-          LIMIT 25
+          LIMIT 100
         `).all(`%${query}%`, `%${query}%`, `%${query}%`);
       }
 
-      clients = sqliteClients.map(client => {
+      let mapped = sqliteClients.map(client => {
         const birthday = getBirthdayStatus(client.birthdate);
         return {
           ...client,
           isBirthdayToday: birthday.isBirthdayToday,
           isBirthdayMonth: birthday.isBirthdayMonth,
+          daysUntilBirthday: birthday.daysUntilBirthday,
           greetingMessage: birthday.greetingMessage
         };
       });
+
+      if (filter === 'birthday_today') {
+        mapped = mapped.filter(c => c.isBirthdayToday);
+      } else if (filter === 'birthday_month') {
+        mapped = mapped.filter(c => c.isBirthdayMonth);
+      }
+
+      clients = mapped.slice(0, 100);
     }
 
     return res.json({
@@ -390,6 +409,8 @@ async function getDashboardMetrics(req, res) {
       const activeCoupons = allCoupons.filter(c => c.status === 'active').length;
       const redeemedCoupons = allCoupons.filter(c => c.status === 'redeemed').length;
       const todayStamps = allStamps.filter(s => (s.created_at || '').startsWith(todayStr) && (s.stamps_added > 0)).length;
+      const birthdaysToday = allClients.filter(c => getBirthdayStatus(c.birthdate).isBirthdayToday).length;
+      const birthdaysMonth = allClients.filter(c => getBirthdayStatus(c.birthdate).isBirthdayMonth).length;
 
       return res.json({
         success: true,
@@ -398,7 +419,9 @@ async function getDashboardMetrics(req, res) {
           cardsCompleted,
           activeCoupons,
           redeemedCoupons,
-          todayStamps
+          todayStamps,
+          birthdaysToday,
+          birthdaysMonth
         }
       });
     }
@@ -412,6 +435,9 @@ async function getDashboardMetrics(req, res) {
       SELECT COUNT(*) as count FROM stamps_history
       WHERE date(created_at) = date('now', 'localtime') AND stamps_added > 0
     `).get().count;
+    const allSqliteClients = db.prepare("SELECT birthdate FROM users WHERE role = 'client'").all();
+    const birthdaysToday = allSqliteClients.filter(c => getBirthdayStatus(c.birthdate).isBirthdayToday).length;
+    const birthdaysMonth = allSqliteClients.filter(c => getBirthdayStatus(c.birthdate).isBirthdayMonth).length;
 
     return res.json({
       success: true,
@@ -420,7 +446,9 @@ async function getDashboardMetrics(req, res) {
         cardsCompleted,
         activeCoupons,
         redeemedCoupons,
-        todayStamps
+        todayStamps,
+        birthdaysToday,
+        birthdaysMonth
       }
     });
   } catch (error) {
@@ -429,10 +457,73 @@ async function getDashboardMetrics(req, res) {
   }
 }
 
+/**
+ * Exportar directorio de clientes a formato CSV (Excel)
+ * Incluye clientes registrados y segmentación de opt-in y cumpleaños
+ */
+async function exportClientsCSV(req, res) {
+  try {
+    let clients = [];
+    if (firestore.isFirestoreConfigured()) {
+      clients = await firestore.getAllClients();
+    } else {
+      clients = db.prepare(`SELECT * FROM users WHERE role = 'client' ORDER BY id DESC`).all();
+    }
+
+    // Ordenar de más reciente a más antiguo
+    clients.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    const rows = [
+      [
+        'Pseudonimo',
+        'Correo Electronico',
+        'Fecha de Nacimiento',
+        'Cumple Hoy',
+        'Cumple este Mes',
+        'Sellos Acumulados',
+        'Premio Ruleta',
+        'Acepta Promociones y Regalos',
+        'Fecha de Registro'
+      ]
+    ];
+
+    clients.forEach(c => {
+      const birthday = getBirthdayStatus(c.birthdate);
+      const optIn = (c.accepts_promotions !== 0 && c.accepts_promotions !== false) ? 'SI' : 'NO';
+      const isToday = birthday.isBirthdayToday ? 'SI' : 'NO';
+      const isMonth = birthday.isBirthdayMonth ? 'SI' : 'NO';
+      rows.push([
+        c.pseudonym || '',
+        c.email || '',
+        c.birthdate || '',
+        isToday,
+        isMonth,
+        String(c.stamps || 0),
+        c.welcome_prize || 'Ninguno',
+        optIn,
+        c.created_at || ''
+      ]);
+    });
+
+    // Formato CSV con BOM UTF-8 para apertura directa y limpia en Microsoft Excel
+    const csvContent = '\uFEFF' + rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const dateStr = new Date().toISOString().substring(0, 10);
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="clientes_niji_directorio_${dateStr}.csv"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.status(200).send(csvContent);
+  } catch (err) {
+    console.error('Error exportando clientes CSV:', err);
+    return res.status(500).json({ success: false, message: 'Error exportando base de datos de clientes.' });
+  }
+}
+
 module.exports = {
   searchClients,
   getClientDetail,
   redeemCoupon,
   resetClientCard,
-  getDashboardMetrics
+  getDashboardMetrics,
+  exportClientsCSV
 };

@@ -32,8 +32,11 @@ router.get('/stamps/my-card', authenticateToken, requireRole('client'), stampsCo
 // Métricas rápidas (Exclusivo Admin)
 router.get('/admin/metrics', authenticateToken, requireRole('admin'), adminController.getDashboardMetrics);
 
-// Buscador de clientes por pseudónimo (Exclusivo Admin)
+// Buscador de clientes por pseudónimo y filtros de cumpleaños (Exclusivo Admin)
 router.get('/admin/clients', authenticateToken, requireRole('admin'), adminController.searchClients);
+
+// Exportar directorio de clientes a CSV (Exclusivo Admin)
+router.get('/admin/clients/export', authenticateToken, requireRole('admin'), adminController.exportClientsCSV);
 
 // Ficha detallada del cliente (Exclusivo Admin)
 router.get('/admin/clients/:id', authenticateToken, requireRole('admin'), adminController.getClientDetail);
