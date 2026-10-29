@@ -3,7 +3,7 @@ const { db } = require('../db');
 const firestore = require('../firestore');
 const { getBirthdayStatus } = require('../utils/birthday');
 
-const BUSINESS_RULE_TEXT = 'Se otorga un sello por compras desde S/ 10. La actualización se procesa al cierre del día.';
+const BUSINESS_RULE_TEXT = 'Se otorga un sello por cada S/ 5 de consumo. La actualización se procesa al cierre del día.';
 
 /**
  * Obtener estado de la tarjeta de sellos del cliente autenticado
@@ -136,7 +136,7 @@ async function addStampToClient(req, res) {
     const stampsBefore = currentStamps;
     const stampsAfter = stampsBefore + 1;
     let generatedCoupon = null;
-    const stampNotes = notes || 'Asignación de sello en cierre de jornada (Compra >= S/10)';
+    const stampNotes = notes || 'Asignación de sello en cierre de jornada (Compra >= S/ 5)';
 
     // Si llega a 5 sellos -> Generar Cupón Digital
     if (stampsAfter === 5) {

@@ -11,7 +11,7 @@ const { getBirthdayStatus } = require('../utils/birthday');
  */
 async function register(req, res) {
   try {
-    const { pseudonym, email, birthdate, password, confirmPassword } = req.body;
+    const { pseudonym, email, birthdate, password, confirmPassword, accepts_promotions, acceptsPromotions } = req.body;
 
     // 1. Validaciones de presencia
     if (!pseudonym || !email || !birthdate || !password || !confirmPassword) {
@@ -24,6 +24,7 @@ async function register(req, res) {
     const cleanPseudonym = pseudonym.trim();
     const cleanEmail = email.trim().toLowerCase();
     const cleanBirthdate = birthdate.trim();
+    const optIn = (accepts_promotions === false || acceptsPromotions === false || accepts_promotions === 0 || acceptsPromotions === 0) ? 0 : 1;
 
     // 2. Validación de formato de pseudónimo
     if (cleanPseudonym.length < 3 || cleanPseudonym.length > 25) {
@@ -111,7 +112,8 @@ async function register(req, res) {
       role: 'client',
       stamps: 0,
       has_spun_wheel: 0,
-      welcome_prize: null
+      welcome_prize: null,
+      accepts_promotions: optIn
     };
 
     let newUserId = Date.now();
@@ -123,9 +125,9 @@ async function register(req, res) {
     // Réplica en SQLite local como fallback
     try {
       const result = db.prepare(`
-        INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize)
-        VALUES (?, ?, ?, ?, 'client', 0, 0, NULL)
-      `).run(cleanPseudonym, cleanEmail, cleanBirthdate, passwordHash);
+        INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize, accepts_promotions)
+        VALUES (?, ?, ?, ?, 'client', 0, 0, NULL, ?)
+      `).run(cleanPseudonym, cleanEmail, cleanBirthdate, passwordHash, optIn);
       if (!firestore.isFirestoreConfigured()) newUserId = Number(result.lastInsertRowid);
     } catch (e) {
       // Ignorar si en SQLite ya existía
@@ -153,6 +155,7 @@ async function register(req, res) {
         stamps: 0,
         has_spun_wheel: 0,
         welcome_prize: null,
+        accepts_promotions: optIn,
         birthdayInfo
       },
       must_spin_wheel: true
@@ -236,6 +239,7 @@ async function loginClient(req, res) {
         stamps: user.stamps || 0,
         has_spun_wheel: user.has_spun_wheel || 0,
         welcome_prize: user.welcome_prize,
+        accepts_promotions: user.accepts_promotions !== undefined ? user.accepts_promotions : 1,
         birthdayInfo
       },
       must_spin_wheel: user.has_spun_wheel === 0
@@ -350,10 +354,11 @@ async function getMe(req, res) {
         stamps: user.stamps || 0,
         has_spun_wheel: user.has_spun_wheel || 0,
         welcome_prize: user.welcome_prize,
+        accepts_promotions: user.accepts_promotions !== undefined ? user.accepts_promotions : 1,
         birthdayInfo
       },
       activeCoupon: activeCoupon || null,
-      businessRule: 'Se otorga un sello por compras desde S/10 y la actualización se procesa al cierre del día.'
+      businessRule: 'Se otorga un sello por cada S/ 5 de consumo y la actualización se procesa al cierre del día.'
     });
   } catch (error) {
     console.error('Error en getMe:', error);

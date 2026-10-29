@@ -92,17 +92,25 @@ async function spinWheel(req, res) {
       }
     }
 
-    // 4. Aplicar premio si otorga sellos
+    // 4. Aplicar premio según su tipo
     let newStamps = user.stamps || 0;
+    let hasSpun = 1;
+    let prizeRecordTitle = selectedPrize.title;
+
     if (selectedPrize.type === 'stamp' && selectedPrize.value > 0) {
       newStamps = Math.min(5, newStamps + selectedPrize.value);
+    } else if (selectedPrize.type === 'spin_again') {
+      hasSpun = 0; // Se le permite volver a girar la ruleta
+      prizeRecordTitle = null;
+    } else if (selectedPrize.type === 'none') {
+      prizeRecordTitle = '🍍 (Sin premio)';
     }
 
     // 5. Actualizar usuario en Firestore de forma permanente
     if (firestore.isFirestoreConfigured()) {
       await firestore.updateUser(user.pseudonym, {
-        has_spun_wheel: 1,
-        welcome_prize: selectedPrize.title,
+        has_spun_wheel: hasSpun,
+        welcome_prize: prizeRecordTitle,
         stamps: newStamps
       });
     }
@@ -111,21 +119,29 @@ async function spinWheel(req, res) {
     try {
       db.prepare(`
         UPDATE users
-        SET has_spun_wheel = 1,
+        SET has_spun_wheel = ?,
             welcome_prize = ?,
             stamps = ?,
             updated_at = datetime('now', 'localtime')
         WHERE pseudonym = ? COLLATE NOCASE OR id = ?
-      `).run(selectedPrize.title, newStamps, user.pseudonym, user.id || 0);
+      `).run(hasSpun, prizeRecordTitle, newStamps, user.pseudonym, user.id || 0);
     } catch (e) {}
+
+    let customMessage = `¡Felicitaciones! Has ganado: ${selectedPrize.title}`;
+    if (selectedPrize.type === 'spin_again') {
+      customMessage = '¡Qué suerte! Tienes un segundo tiro libre. ¡Gira la ruleta otra vez!';
+    } else if (selectedPrize.type === 'none') {
+      customMessage = '¡Uy, te tocó piña 🍍! No hay premio esta vez, pero tu tarjeta ya acumula sellos.';
+    }
 
     return res.json({
       success: true,
-      message: `¡Felicitaciones! Has ganado: ${selectedPrize.title}`,
+      message: customMessage,
       prize: selectedPrize,
       prizeIndex: selectedIndex,
       updatedStamps: newStamps,
-      hasSpunWheel: 1
+      hasSpunWheel: hasSpun,
+      canSpinAgain: selectedPrize.type === 'spin_again'
     });
 
   } catch (error) {

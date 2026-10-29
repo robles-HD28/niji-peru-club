@@ -22,15 +22,20 @@ class RouletteWheel {
 
   initCanvas() {
     const dpr = window.devicePixelRatio || 1;
-    const rect = this.canvas.getBoundingClientRect();
-    const size = Math.min(rect.width || 320, 320);
+    const container = this.canvas.parentElement;
+    const rect = container ? container.getBoundingClientRect() : this.canvas.getBoundingClientRect();
+    const available = rect.width > 0 ? rect.width : 280;
+    const size = Math.floor(Math.min(available, 280));
 
     this.canvas.width = size * dpr;
     this.canvas.height = size * dpr;
+    this.canvas.style.width = `${size}px`;
+    this.canvas.style.height = `${size}px`;
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.scale(dpr, dpr);
     this.width = size;
     this.height = size;
-    this.radius = (size / 2) - 16;
+    this.radius = (size / 2) - 8;
   }
 
   setPrizes(prizes) {
@@ -95,35 +100,39 @@ class RouletteWheel {
       ctx.rotate(startAngle + sliceAngle / 2);
       ctx.textAlign = 'right';
       ctx.fillStyle = prize.text_color || '#ffffff';
-      ctx.font = 'bold 12px "Outfit", sans-serif';
-      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+
+      const isEmojiOnly = prize.title === '🍍';
+      const fontSize = isEmojiOnly ? Math.max(16, Math.floor(this.radius * 0.16)) : Math.max(10, Math.floor(this.radius * 0.092));
+      ctx.font = `bold ${fontSize}px "Outfit", sans-serif`;
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
       ctx.shadowBlur = 4;
-      ctx.fillText(prize.title, this.radius - 14, 4);
+      ctx.fillText(prize.title, this.radius - 12, isEmojiOnly ? 6 : 4);
       ctx.restore();
 
       ctx.restore();
     }
 
     // Centro de la ruleta con avatar del Gatito NIJI
+    const centerRadius = Math.max(22, Math.floor(this.radius * 0.22));
     ctx.save();
     ctx.beginPath();
-    ctx.arc(centerX, centerY, 34, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, centerRadius, 0, 2 * Math.PI);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
     ctx.strokeStyle = '#ff6b00';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3.5;
     ctx.stroke();
     ctx.clip();
 
     if (this.centerLogo.complete && this.centerLogo.naturalHeight !== 0) {
-      // Dibujar imagen centrada
-      ctx.drawImage(this.centerLogo, centerX - 28, centerY - 28, 56, 56);
+      const logoSize = Math.floor(centerRadius * 1.6);
+      ctx.drawImage(this.centerLogo, centerX - logoSize / 2, centerY - logoSize / 2, logoSize, logoSize);
     } else {
       ctx.fillStyle = '#ff2638';
-      ctx.font = 'bold 20px "Outfit", sans-serif';
+      ctx.font = '900 16px "Outfit", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('niji', centerX, centerY);
+      ctx.fillText('NIJI', centerX, centerY);
     }
     ctx.restore();
   }

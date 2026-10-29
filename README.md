@@ -13,7 +13,7 @@ Aplicación web móvil progresiva (**PWA**) y sistema de fidelización de client
 
 ### Módulo 2: Tarjeta de Sellos Digital (Vista Cliente)
 - **Tarjeta virtual VIP:** Visualizador interactivo de **5 casilleros** con estampado dinámico estilo sello japonés *Hanko*.
-- **Regla de negocio visible:** *"Se otorga un sello por compras desde S/10 y la actualización se procesa al cierre del día."*
+- **Regla de negocio visible:** *"Se otorga un sello por cada S/ 5 de consumo y la actualización se procesa al cierre del día."*
 - **Personalización por fecha de nacimiento:** 
   - Saludo especial y beneficio si hoy es su cumpleaños.
   - Alerta si se encuentra en el mes de su cumpleaños.

@@ -255,6 +255,16 @@ function renderRegisterView(container) {
           </div>
         </div>
 
+        <!-- Checkbox Opt-in de Promociones & Cumpleaños -->
+        <div class="p-3 rounded-2xl bg-orange-50/80 border border-orange-200/90 mt-1">
+          <label class="flex items-start gap-2.5 cursor-pointer select-none">
+            <input type="checkbox" id="reg-promotions" checked class="mt-0.5 w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-400 cursor-pointer accent-orange-500" />
+            <span class="text-xs text-slate-700 leading-snug font-medium">
+              Deseo recibir información de promociones de la empresa y regalos por mi cumpleaños.
+            </span>
+          </label>
+        </div>
+
         <button type="submit" id="btn-register-submit" class="btn-primary w-full py-3 rounded-2xl text-sm font-black flex items-center justify-center gap-2 mt-2">
           <span>Crear Cuenta & Girar Ruleta</span>
           <span class="text-lg">🎯</span>
@@ -278,6 +288,7 @@ function renderRegisterView(container) {
     const birthdate = document.getElementById('reg-birthdate').value;
     const password = document.getElementById('reg-password').value;
     const confirmPassword = document.getElementById('reg-confirm-password').value;
+    const acceptsPromotions = document.getElementById('reg-promotions').checked;
 
     if (password !== confirmPassword) {
       showToast('Las contraseñas no coinciden. Por favor verifícalas.', 'error');
@@ -288,7 +299,14 @@ function renderRegisterView(container) {
     btn.innerHTML = '<span class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span> Registrando...';
 
     try {
-      const res = await API.register({ pseudonym, email, birthdate, password, confirmPassword });
+      const res = await API.register({ 
+        pseudonym, 
+        email, 
+        birthdate, 
+        password, 
+        confirmPassword,
+        accepts_promotions: acceptsPromotions
+      });
       API.setToken(res.token);
       API.setCurrentUser(res.user);
       showToast('¡Registro exitoso! ¡Bienvenido a NIJI Perú!', 'success');
@@ -319,7 +337,7 @@ async function renderRouletteView(container) {
         </p>
       </div>
 
-      <!-- Contenedor de Ruleta y Aguja -->
+      <!-- Contenedor de Ruleta y Aguja Responsiva -->
       <div class="roulette-container my-1">
         <div class="roulette-pointer">
           <svg viewBox="0 0 34 42" class="w-full h-full filter drop-shadow">
@@ -327,7 +345,7 @@ async function renderRouletteView(container) {
             <circle cx="17" cy="12" r="5" fill="#f59e0b"/>
           </svg>
         </div>
-        <canvas id="roulette-canvas" width="320" height="320" class="rounded-full shadow-lg cursor-pointer"></canvas>
+        <canvas id="roulette-canvas" class="rounded-full shadow-lg cursor-pointer"></canvas>
       </div>
 
       <!-- Botón de Giro -->
@@ -339,7 +357,7 @@ async function renderRouletteView(container) {
         </button>
 
         <p class="text-[10px] text-slate-400 font-medium">
-          * Válido únicamente 1 vez por cliente registrado al unirse al Club NIJI Perú.
+          * Válido al unirse al Club NIJI Perú.
         </p>
       </div>
     </div>
@@ -349,14 +367,14 @@ async function renderRouletteView(container) {
       <div class="bg-white p-6 rounded-3xl max-w-xs w-full text-center border-2 border-orange-300 shadow-2xl space-y-4">
         <img src="/img/niji-logo.png" alt="NIJI Ganador" class="w-24 h-24 mx-auto object-contain logo-sticker" />
         <div>
-          <span class="text-xs text-orange-600 font-black uppercase tracking-wider">¡FELICITACIONES!</span>
+          <span id="modal-status-pill" class="text-xs text-orange-600 font-black uppercase tracking-wider">¡RESULTADO DEL GIRO!</span>
           <h3 id="modal-prize-title" class="text-xl font-black text-slate-900 mt-1">Premio</h3>
-          <p id="modal-prize-desc" class="text-xs text-slate-600 mt-1 font-medium">Descripción del premio</p>
+          <p id="modal-prize-desc" class="text-xs text-slate-600 mt-1 font-medium leading-relaxed">Descripción del premio</p>
         </div>
         <div id="modal-stamp-badge" class="hidden p-2.5 rounded-2xl bg-orange-50 border border-orange-200 text-orange-800 text-xs font-bold">
           ⭐ ¡Se añadió automáticamente 1 sello a tu tarjeta virtual!
         </div>
-        <button onclick="navigateTo('#tarjeta')" class="btn-primary w-full py-3 rounded-2xl text-sm font-black">
+        <button id="modal-action-btn" class="btn-primary w-full py-3 rounded-2xl text-sm font-black">
           Ver mi Tarjeta de Sellos →
         </button>
       </div>
@@ -390,22 +408,69 @@ async function renderRouletteView(container) {
         const spinResult = await API.spinWheel();
 
         activeRoulette.spinTo(spinResult.prizeIndex, (awardedPrize) => {
-          SoundEffects.playVictory();
-          Confetti.launch(90);
+          const isSpinAgain = awardedPrize.type === 'spin_again';
+          const isNone = awardedPrize.type === 'none';
+          const isStamp = awardedPrize.type === 'stamp';
+
+          if (isSpinAgain) {
+            SoundEffects.playCoin();
+          } else if (isNone) {
+            SoundEffects.playTick();
+          } else {
+            SoundEffects.playVictory();
+            Confetti.launch(80);
+          }
 
           const updatedUser = {
             ...user,
-            has_spun_wheel: 1,
+            has_spun_wheel: spinResult.hasSpunWheel,
             welcome_prize: awardedPrize.title,
             stamps: spinResult.updatedStamps
           };
           API.setCurrentUser(updatedUser);
 
-          document.getElementById('modal-prize-title').textContent = awardedPrize.title;
-          document.getElementById('modal-prize-desc').textContent = awardedPrize.description;
-          if (awardedPrize.type === 'stamp') {
-            document.getElementById('modal-stamp-badge').classList.remove('hidden');
+          const statusPill = document.getElementById('modal-status-pill');
+          const prizeTitle = document.getElementById('modal-prize-title');
+          const prizeDesc = document.getElementById('modal-prize-desc');
+          const stampBadge = document.getElementById('modal-stamp-badge');
+          const actionBtn = document.getElementById('modal-action-btn');
+
+          if (isSpinAgain) {
+            statusPill.textContent = '🔄 ¡TIRO ADICIONAL!';
+            prizeTitle.textContent = '¡Vuelve a girar!';
+            prizeDesc.textContent = '¡Qué suerte! Has obtenido un segundo giro libre de bienvenida. ¡Gira la ruleta otra vez!';
+            stampBadge.classList.add('hidden');
+            actionBtn.textContent = '¡Girar de Nuevo! 🎯';
+            actionBtn.onclick = () => {
+              document.getElementById('prize-modal').classList.add('hidden');
+              spinBtn.disabled = false;
+              spinBtn.innerHTML = '<span class="text-xl">🐾</span> <span>¡GIRAR RULETA AHORA!</span> <span class="text-xl">✨</span>';
+            };
+          } else if (isNone) {
+            statusPill.textContent = '🍍 RESULTADO';
+            prizeTitle.textContent = '¡Te tocó Piña!';
+            prizeDesc.textContent = 'Mala suerte esta vez, no obtuviste premio en la ruleta. ¡Pero tu tarjeta ya está lista para acumular sellos por tus compras!';
+            stampBadge.classList.add('hidden');
+            actionBtn.textContent = 'Ir a mi Tarjeta de Sellos →';
+            actionBtn.onclick = () => navigateTo('#tarjeta');
+          } else if (isStamp) {
+            statusPill.textContent = '⭐ ¡PREMIO GANADO!';
+            prizeTitle.textContent = '¡Un Sello Extra!';
+            prizeDesc.textContent = awardedPrize.description || '¡Inicias tu tarjeta con 1 sello acumulado!';
+            stampBadge.classList.remove('hidden');
+            stampBadge.textContent = '⭐ ¡Se añadió automáticamente 1 sello a tu tarjeta virtual!';
+            actionBtn.textContent = 'Ver mi Tarjeta de Sellos →';
+            actionBtn.onclick = () => navigateTo('#tarjeta');
+          } else {
+            statusPill.textContent = '🎁 ¡PREMIO GANADO!';
+            prizeTitle.textContent = awardedPrize.title;
+            prizeDesc.textContent = awardedPrize.description;
+            stampBadge.classList.remove('hidden');
+            stampBadge.textContent = `🎁 Presenta este premio en caja: ${awardedPrize.title}`;
+            actionBtn.textContent = 'Ver mi Tarjeta de Sellos →';
+            actionBtn.onclick = () => navigateTo('#tarjeta');
           }
+
           document.getElementById('prize-modal').classList.remove('hidden');
         });
 
@@ -509,21 +574,39 @@ async function renderStampCardView(container) {
     let stampSlotsHTML = '';
     for (let i = 1; i <= 5; i++) {
       const isStamped = i <= stamps;
-      const isLast = i === 5;
+      const isGoal = i === 5;
 
-      stampSlotsHTML += `
-        <div class="flex flex-col items-center gap-1.5">
-          <div class="stamp-slot ${isStamped ? 'stamped' : 'empty'} ${isLast ? 'special-reward' : ''}">
-            ${isStamped 
-              ? `<span class="text-white text-2xl select-none drop-shadow">❤️</span>` 
-              : `<span class="text-slate-400 font-black text-sm select-none">${i}</span>`
-            }
+      if (isGoal) {
+        // El 5to sello (Meta Final): Obligatoriamente una estrella ⭐
+        stampSlotsHTML += `
+          <div class="flex flex-col items-center gap-1.5">
+            <div class="stamp-slot slot-goal ${isStamped ? 'stamped' : 'empty'} relative">
+              ${isStamped 
+                ? `<span class="text-white text-2xl select-none drop-shadow-md">⭐</span>` 
+                : `<span class="text-amber-500 font-black text-2xl select-none opacity-85">⭐</span>`
+              }
+            </div>
+            <span class="text-[10px] font-black ${isStamped ? 'text-amber-600' : 'text-amber-700/80'} flex items-center gap-0.5">
+              <span>⭐</span> Meta
+            </span>
           </div>
-          <span class="text-[10px] font-bold ${isStamped ? 'text-orange-600' : 'text-slate-400'}">
-            ${isLast ? '🎁 Premio' : `Sello ${i}`}
-          </span>
-        </div>
-      `;
+        `;
+      } else {
+        // Primeros 4 sellos regulares: Huellita de gatito 🐾
+        stampSlotsHTML += `
+          <div class="flex flex-col items-center gap-1.5">
+            <div class="stamp-slot ${isStamped ? 'stamped' : 'empty'}">
+              ${isStamped 
+                ? `<span class="text-white text-2xl select-none drop-shadow">🐾</span>` 
+                : `<span class="text-slate-400 font-black text-sm select-none">${i}</span>`
+              }
+            </div>
+            <span class="text-[10px] font-bold ${isStamped ? 'text-orange-600' : 'text-slate-400'}">
+              Sello ${i}
+            </span>
+          </div>
+        `;
+      }
     }
 
     // Sección de Cupón Digital cuando se completan los 5 sellos
@@ -608,9 +691,10 @@ async function renderStampCardView(container) {
         <div class="stamp-card-vip p-5 rounded-3xl ${isCompleted ? 'card-locked' : ''}">
           <div class="flex items-center justify-between pb-3 border-b border-orange-200/60">
             <div class="flex items-center gap-1.5">
-              <span class="text-base font-black tracking-wide text-slate-800">
-                <span class="text-rose-500">n</span><span class="text-orange-500">i</span><span class="text-amber-500">j</span><span class="text-teal-600">i</span> VIP CARD
+              <span class="brand-logo-title text-base font-black">
+                <span class="text-[#ff4d5a]">N</span><span class="text-[#ff7e29]">I</span><span class="text-[#f59e0b]">J</span><span class="text-[#0d9488]">I</span>
               </span>
+              <span class="text-xs font-black text-slate-800 tracking-wider ml-1">VIP CARD</span>
             </div>
             <span class="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-white text-orange-700 border border-orange-200 shadow-2xs">
               ${isCompleted ? '⭐ COMPLETA' : 'EN PROCESO'}
@@ -655,7 +739,7 @@ async function renderStampCardView(container) {
           </div>
 
           ${history.length === 0 ? `
-            <p class="text-xs text-slate-500 text-center py-3 font-medium">Aún no registras compras con sello. ¡Haz tu primera compra desde S/ 10!</p>
+            <p class="text-xs text-slate-500 text-center py-3 font-medium">Aún no registras compras con sello. ¡Haz tu primera compra desde S/ 5!</p>
           ` : `
             <div class="space-y-2 max-h-40 overflow-y-auto pr-1">
               ${history.map(item => `
@@ -1024,11 +1108,20 @@ async function renderClientDetailAdminView(container, clientId) {
     let clientStampSlots = '';
     for (let i = 1; i <= 5; i++) {
       const isStamped = i <= client.stamps;
-      clientStampSlots += `
-        <div class="stamp-slot ${isStamped ? 'stamped' : 'empty'} w-10 h-10 text-xs">
-          ${isStamped ? '❤️' : i}
-        </div>
-      `;
+      const isGoal = i === 5;
+      if (isGoal) {
+        clientStampSlots += `
+          <div class="stamp-slot slot-goal ${isStamped ? 'stamped' : 'empty'} w-10 h-10 text-sm">
+            ⭐
+          </div>
+        `;
+      } else {
+        clientStampSlots += `
+          <div class="stamp-slot ${isStamped ? 'stamped' : 'empty'} w-10 h-10 text-xs">
+            ${isStamped ? '🐾' : i}
+          </div>
+        `;
+      }
     }
 
     const activeCoupon = client.coupons.find(c => c.status === 'active');

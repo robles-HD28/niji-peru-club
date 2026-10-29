@@ -20,10 +20,18 @@ function initDatabase() {
       stamps INTEGER NOT NULL DEFAULT 0 CHECK(stamps >= 0 AND stamps <= 5),
       has_spun_wheel INTEGER NOT NULL DEFAULT 0,
       welcome_prize TEXT DEFAULT NULL,
+      accepts_promotions INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
   `);
+
+  // Asegurar migración de accepts_promotions en instalaciones previas
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN accepts_promotions INTEGER NOT NULL DEFAULT 1;`);
+  } catch (e) {
+    // Columna ya existe
+  }
 
   // 2. Tabla de Premios de la Ruleta Spin-to-Win
   db.exec(`

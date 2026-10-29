@@ -56,6 +56,23 @@ body {
   background-attachment: fixed;
 }
 
+/* Logo NIJI Oficial con mayúsculas y espaciado compacto */
+.brand-logo-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.brand-logo-title span {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  letter-spacing: -0.03em;
+}
+
 h1, h2, h3, h4, .font-heading {
   font-family: 'Outfit', sans-serif;
 }
@@ -172,15 +189,19 @@ h1, h2, h3, h4, .font-heading {
   animation: stampHit 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-.stamp-slot.special-reward {
+.stamp-slot.special-reward,
+.stamp-slot.slot-goal {
   border: 2px dashed #f59e0b;
   background: #fffbeb;
+  color: #f59e0b;
 }
 
-.stamp-slot.special-reward.stamped {
+.stamp-slot.special-reward.stamped,
+.stamp-slot.slot-goal.stamped {
   border: 2px solid #ffffff;
-  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
-  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.5);
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 50%, #f97316 100%);
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.45), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+  animation: stampHit 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 @keyframes stampHit {
@@ -233,23 +254,37 @@ h1, h2, h3, h4, .font-heading {
   right: -11px;
 }
 
-/* Ruleta Canvas */
+/* Ruleta Canvas Responsiva */
 .roulette-container {
   position: relative;
-  width: 320px;
-  height: 320px;
-  margin: 0 auto;
+  width: min(280px, 78vw);
+  height: min(280px, 78vw);
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  margin: 6px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#roulette-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100%;
+  border-radius: 50%;
+  display: block;
+  touch-action: manipulation;
 }
 
 .roulette-pointer {
   position: absolute;
-  top: -12px;
+  top: -10px;
   left: 50%;
   transform: translateX(-50%);
-  width: 34px;
-  height: 42px;
+  width: 30px;
+  height: 38px;
   z-index: 20;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.25));
 }
 
 /* Botón Principal Gradiente Cálido NIJI */
