@@ -1,9 +1,10 @@
+const crypto = require('node:crypto');
 const { db } = require('../db');
 const firestore = require('../firestore');
 const { getBirthdayStatus } = require('../utils/birthday');
 
 /**
- * Buscar clientes por pseudónimo o correo (Buscador rápido para el cajero)
+ * Buscar clientes por pseudónimo, correo o fecha de nacimiento (Buscador rápido para el cajero)
  */
 async function searchClients(req, res) {
   try {
@@ -14,6 +15,7 @@ async function searchClients(req, res) {
       const allClients = await firestore.getAllClients(query);
       const allCoupons = await firestore.queryCollection('coupons');
       const activeCouponsMap = {};
+
       allCoupons.forEach(c => {
         if (c.status === 'active') {
           const userKey = (c.user_pseudonym || '').toLowerCase();
@@ -21,7 +23,12 @@ async function searchClients(req, res) {
         }
       });
 
-      clients = allClients.slice(0, 30).map(c => {
+      // Ordenar: recientes primero o coincidencia exacta al inicio
+      const sorted = allClients.sort((a, b) => {
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+      });
+
+      clients = sorted.slice(0, 30).map(c => {
         const birthday = getBirthdayStatus(c.birthdate);
         const userKey = (c.pseudonym || '').toLowerCase();
         return {
@@ -32,6 +39,7 @@ async function searchClients(req, res) {
           stamps: c.stamps || 0,
           has_spun_wheel: c.has_spun_wheel || 0,
           welcome_prize: c.welcome_prize,
+          accepts_promotions: c.accepts_promotions !== undefined ? c.accepts_promotions : 1,
           created_at: c.created_at,
           active_coupons_count: activeCouponsMap[userKey] || 0,
           isBirthdayToday: birthday.isBirthdayToday,
@@ -39,9 +47,7 @@ async function searchClients(req, res) {
           greetingMessage: birthday.greetingMessage
         };
       });
-    }
-
-    if (clients.length === 0 && !firestore.isFirestoreConfigured()) {
+    } else {
       let sqliteClients;
       if (!query) {
         sqliteClients = db.prepare(`
@@ -50,7 +56,7 @@ async function searchClients(req, res) {
           FROM users u
           WHERE u.role = 'client'
           ORDER BY u.id DESC
-          LIMIT 20
+          LIMIT 25
         `).all();
       } else {
         sqliteClients = db.prepare(`
@@ -58,10 +64,10 @@ async function searchClients(req, res) {
                  (SELECT COUNT(*) FROM coupons c WHERE c.user_id = u.id AND c.status = 'active') AS active_coupons_count
           FROM users u
           WHERE u.role = 'client'
-            AND (u.pseudonym LIKE ? OR u.email LIKE ?)
+            AND (u.pseudonym LIKE ? OR u.email LIKE ? OR u.birthdate LIKE ?)
           ORDER BY u.pseudonym ASC
-          LIMIT 20
-        `).all(`%${query}%`, `%${query}%`);
+          LIMIT 25
+        `).all(`%${query}%`, `%${query}%`, `%${query}%`);
       }
 
       clients = sqliteClients.map(client => {
@@ -85,7 +91,7 @@ async function searchClients(req, res) {
     console.error('Error en searchClients:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al buscar clientes en el sistema.'
+      message: 'Error al buscar clientes en la base de datos.'
     });
   }
 }
@@ -108,42 +114,56 @@ async function getClientDetail(req, res) {
         client = all.find(c => String(c.id) === String(id) || (c.pseudonym || '').toLowerCase() === String(id).toLowerCase());
       }
 
-      if (client) {
+      if (client && client.role === 'client') {
         coupons = await firestore.getUserCoupons(client.pseudonym);
         stampsHistory = await firestore.getUserStampHistory(client.pseudonym);
-      }
-    }
 
-    if (!client) {
+        // Si el cliente tiene 5 sellos pero ningún cupón activo, regenerar automáticamente
+        const hasActive = coupons.some(c => c.status === 'active');
+        if ((client.stamps || 0) >= 5 && !hasActive) {
+          const recoveryCode = 'NIJI-VIP-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+          const newCoupon = await firestore.createCoupon({
+            user_pseudonym: client.pseudonym,
+            code: recoveryCode,
+            title: '¡Recompensa 5 Sellos NIJI Perú!',
+            description: 'Válido por un Combo Especial o Bebida Grande a elección. Presenta este cupón en caja para redimirlo.',
+            status: 'active'
+          });
+          if (newCoupon) coupons.unshift(newCoupon);
+        }
+      }
+    } else {
       client = db.prepare(`
         SELECT id, pseudonym, email, birthdate, role, stamps, has_spun_wheel, welcome_prize, created_at, updated_at
         FROM users
         WHERE (id = ? OR pseudonym = ? COLLATE NOCASE) AND role = 'client'
       `).get(id, id);
 
-      if (!client) {
-        return res.status(404).json({
-          success: false,
-          message: 'Cliente no encontrado.'
-        });
+      if (client) {
+        coupons = db.prepare(`
+          SELECT id, code, title, description, status, created_at, redeemed_at
+          FROM coupons
+          WHERE user_id = ?
+          ORDER BY id DESC
+        `).all(client.id);
+
+        stampsHistory = db.prepare(`
+          SELECT sh.id, sh.stamps_added, sh.stamps_before, sh.stamps_after, sh.notes, sh.created_at,
+                 COALESCE(admin.pseudonym, 'Personal NIJI') AS admin_pseudonym
+          FROM stamps_history sh
+          LEFT JOIN users admin ON sh.admin_id = admin.id
+          WHERE sh.user_id = ?
+          ORDER BY sh.id DESC
+          LIMIT 15
+        `).all(client.id);
       }
+    }
 
-      coupons = db.prepare(`
-        SELECT id, code, title, description, status, created_at, redeemed_at
-        FROM coupons
-        WHERE user_id = ? OR user_pseudonym = ?
-        ORDER BY id DESC
-      `).all(client.id, client.pseudonym);
-
-      stampsHistory = db.prepare(`
-        SELECT sh.id, sh.stamps_added, sh.stamps_before, sh.stamps_after, sh.notes, sh.created_at,
-               COALESCE(admin.pseudonym, sh.admin_pseudonym, 'Personal NIJI') AS admin_pseudonym
-        FROM stamps_history sh
-        LEFT JOIN users admin ON sh.admin_id = admin.id
-        WHERE sh.user_id = ? OR sh.user_pseudonym = ?
-        ORDER BY sh.id DESC
-        LIMIT 15
-      `).all(client.id, client.pseudonym);
+    if (!client || client.role !== 'client') {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado.'
+      });
     }
 
     const currentStamps = client.stamps || 0;
@@ -160,11 +180,12 @@ async function getClientDetail(req, res) {
         stamps: currentStamps,
         has_spun_wheel: client.has_spun_wheel || 0,
         welcome_prize: client.welcome_prize,
+        accepts_promotions: client.accepts_promotions !== undefined ? client.accepts_promotions : 1,
         created_at: client.created_at,
         birthdayInfo,
         hasActiveReward: currentStamps >= 5,
         coupons: coupons || [],
-        stampsHistory: stampsHistory || []
+        stampsHistory: (stampsHistory || []).slice(0, 15)
       }
     });
 
@@ -184,7 +205,7 @@ async function redeemCoupon(req, res) {
   try {
     const adminPseudonym = req.user.pseudonym;
     const adminId = req.user.id || adminPseudonym;
-    const { couponCode, clientId } = req.body;
+    const { couponCode } = req.body;
 
     if (!couponCode) {
       return res.status(400).json({
@@ -194,37 +215,50 @@ async function redeemCoupon(req, res) {
     }
 
     const cleanCode = couponCode.trim().toUpperCase();
-    let redeemedCouponDoc = null;
     let clientPseudonym = '';
 
     if (firestore.isFirestoreConfigured()) {
-      redeemedCouponDoc = await firestore.redeemCouponByCode(cleanCode, adminPseudonym);
-      if (redeemedCouponDoc) {
-        clientPseudonym = redeemedCouponDoc.user_pseudonym;
-        if (clientPseudonym) {
-          const clientData = await firestore.getUserByPseudonym(clientPseudonym);
-          const previousStamps = clientData ? (clientData.stamps || 0) : 5;
-
-          await firestore.updateUser(clientPseudonym, { stamps: 0 });
-
-          await firestore.addStampHistory({
-            user_pseudonym: clientPseudonym,
-            admin_pseudonym: adminPseudonym,
-            stamps_added: 0,
-            stamps_before: previousStamps,
-            stamps_after: 0,
-            notes: `Canje de cupón ${cleanCode} y reinicio de tarjeta a nuevo ciclo`
-          });
-        }
+      const redeemedCouponDoc = await firestore.redeemCouponByCode(cleanCode, adminPseudonym);
+      if (!redeemedCouponDoc) {
+        return res.status(404).json({
+          success: false,
+          message: `El cupón "${cleanCode}" no existe en el sistema.`
+        });
       }
-    }
 
-    // Réplica o fallback en SQLite
-    let sqliteCoupon = null;
-    try {
-      sqliteCoupon = db.prepare(`SELECT * FROM coupons WHERE code = ? COLLATE NOCASE`).get(cleanCode);
-      if (sqliteCoupon && sqliteCoupon.status !== 'redeemed') {
-        const client = db.prepare('SELECT id, pseudonym, stamps FROM users WHERE id = ?').get(sqliteCoupon.user_id);
+      clientPseudonym = redeemedCouponDoc.user_pseudonym;
+      if (clientPseudonym) {
+        const clientData = await firestore.getUserByPseudonym(clientPseudonym);
+        const previousStamps = clientData ? (clientData.stamps || 0) : 5;
+
+        await firestore.updateUser(clientPseudonym, { stamps: 0 });
+        await firestore.addStampHistory({
+          user_pseudonym: clientPseudonym,
+          admin_pseudonym: adminPseudonym,
+          stamps_added: 0,
+          stamps_before: previousStamps,
+          stamps_after: 0,
+          notes: `Canje de cupón ${cleanCode} y reinicio de tarjeta a 0/5 sellos`
+        });
+      }
+    } else {
+      const sqliteCoupon = db.prepare(`SELECT * FROM coupons WHERE code = ? COLLATE NOCASE`).get(cleanCode);
+      if (!sqliteCoupon) {
+        return res.status(404).json({
+          success: false,
+          message: `El cupón "${cleanCode}" no fue encontrado en el sistema.`
+        });
+      }
+      if (sqliteCoupon.status === 'redeemed') {
+        return res.status(400).json({
+          success: false,
+          message: 'Este cupón ya fue canjeado previamente.'
+        });
+      }
+
+      const client = db.prepare('SELECT id, pseudonym, stamps FROM users WHERE id = ?').get(sqliteCoupon.user_id);
+      db.exec('BEGIN TRANSACTION;');
+      try {
         db.prepare(`
           UPDATE coupons
           SET status = 'redeemed', redeemed_at = datetime('now', 'localtime'), redeemed_by_admin_id = ?
@@ -232,32 +266,23 @@ async function redeemCoupon(req, res) {
         `).run(typeof adminId === 'number' ? adminId : 1, sqliteCoupon.id);
 
         if (client) {
-          clientPseudonym = clientPseudonym || client.pseudonym;
+          clientPseudonym = client.pseudonym;
           db.prepare(`UPDATE users SET stamps = 0, updated_at = datetime('now', 'localtime') WHERE id = ?`).run(client.id);
           db.prepare(`
             INSERT INTO stamps_history (user_id, admin_id, stamps_added, stamps_before, stamps_after, notes)
             VALUES (?, ?, 0, ?, 0, ?)
           `).run(client.id, typeof adminId === 'number' ? adminId : 1, client.stamps, `Canje de cupón ${cleanCode} y reinicio a 0`);
         }
+        db.exec('COMMIT;');
+      } catch (txErr) {
+        db.exec('ROLLBACK;');
+        throw txErr;
       }
-    } catch (e) {}
-
-    if (!redeemedCouponDoc && (!sqliteCoupon || sqliteCoupon.status === 'redeemed')) {
-      if (sqliteCoupon && sqliteCoupon.status === 'redeemed') {
-        return res.status(400).json({
-          success: false,
-          message: `Este cupón ya fue canjeado previamente.`
-        });
-      }
-      return res.status(404).json({
-        success: false,
-        message: `El cupón "${cleanCode}" no fue encontrado en el sistema.`
-      });
     }
 
     return res.json({
       success: true,
-      message: `¡Cupón ${cleanCode} canjeado exitosamente para ${clientPseudonym || 'el cliente'}! La tarjeta ha sido reiniciada a 0/5 sellos para su próximo ciclo.`,
+      message: `¡Cupón ${cleanCode} canjeado con éxito para @${clientPseudonym}! La tarjeta se reinició a 0/5 sellos para su nuevo ciclo.`,
       coupon: {
         code: cleanCode,
         status: 'redeemed'
@@ -286,51 +311,54 @@ async function resetClientCard(req, res) {
     const adminId = req.user.id || adminPseudonym;
     const { clientId, clientPseudonym } = req.body;
 
-    let targetPseudonym = clientPseudonym;
+    let targetPseudonym = (clientPseudonym || clientId || '').toString().trim();
 
-    if (!targetPseudonym && clientId && firestore.isFirestoreConfigured()) {
-      const allClients = await firestore.getAllClients();
-      const match = allClients.find(c => String(c.id) === String(clientId) || c.pseudonym === clientId);
-      if (match) targetPseudonym = match.pseudonym;
-    }
-
-    if (firestore.isFirestoreConfigured() && targetPseudonym) {
-      const client = await firestore.getUserByPseudonym(targetPseudonym);
-      if (client) {
-        const previousStamps = client.stamps || 0;
-        await firestore.updateUser(targetPseudonym, { stamps: 0 });
-        await firestore.markUserCouponsAsRedeemed(targetPseudonym, adminPseudonym);
-        await firestore.addStampHistory({
-          user_pseudonym: targetPseudonym,
-          admin_pseudonym: adminPseudonym,
-          stamps_added: 0,
-          stamps_before: previousStamps,
-          stamps_after: 0,
-          notes: 'Reinicio manual de tarjeta tras entrega de recompensa'
-        });
-      }
-    }
-
-    // Réplica en SQLite
-    try {
-      let client;
-      if (clientId) {
-        client = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'client'").get(clientId);
-      } else if (targetPseudonym) {
-        client = db.prepare("SELECT * FROM users WHERE pseudonym = ? COLLATE NOCASE AND role = 'client'").get(targetPseudonym.trim());
+    if (firestore.isFirestoreConfigured()) {
+      let client = await firestore.getUserByPseudonym(targetPseudonym);
+      if (!client) {
+        const allClients = await firestore.getAllClients();
+        client = allClients.find(c => String(c.id) === targetPseudonym || (c.pseudonym || '').toLowerCase() === targetPseudonym.toLowerCase());
       }
 
-      if (client) {
-        targetPseudonym = targetPseudonym || client.pseudonym;
+      if (!client || client.role !== 'client') {
+        return res.status(404).json({ success: false, message: 'Cliente no encontrado.' });
+      }
+
+      targetPseudonym = client.pseudonym;
+      const previousStamps = client.stamps || 0;
+
+      await firestore.updateUser(targetPseudonym, { stamps: 0 });
+      await firestore.markUserCouponsAsRedeemed(targetPseudonym, adminPseudonym);
+      await firestore.addStampHistory({
+        user_pseudonym: targetPseudonym,
+        admin_pseudonym: adminPseudonym,
+        stamps_added: 0,
+        stamps_before: previousStamps,
+        stamps_after: 0,
+        notes: 'Reinicio manual de tarjeta a 0/5 tras entrega de recompensa'
+      });
+    } else {
+      const client = db.prepare("SELECT * FROM users WHERE (id = ? OR pseudonym = ? COLLATE NOCASE) AND role = 'client'").get(clientId || 0, targetPseudonym);
+      if (!client) {
+        return res.status(404).json({ success: false, message: 'Cliente no encontrado.' });
+      }
+
+      targetPseudonym = client.pseudonym;
+      db.exec('BEGIN TRANSACTION;');
+      try {
         db.prepare(`UPDATE users SET stamps = 0, updated_at = datetime('now', 'localtime') WHERE id = ?`).run(client.id);
         db.prepare(`UPDATE coupons SET status = 'redeemed', redeemed_at = datetime('now', 'localtime') WHERE user_id = ? AND status = 'active'`).run(client.id);
         db.prepare(`INSERT INTO stamps_history (user_id, admin_id, stamps_added, stamps_before, stamps_after, notes) VALUES (?, ?, 0, ?, 0, 'Reinicio manual de tarjeta tras entrega de recompensa')`).run(client.id, typeof adminId === 'number' ? adminId : 1, client.stamps);
+        db.exec('COMMIT;');
+      } catch (txErr) {
+        db.exec('ROLLBACK;');
+        throw txErr;
       }
-    } catch (e) {}
+    }
 
     return res.json({
       success: true,
-      message: `¡Tarjeta de @${targetPseudonym} reiniciada exitosamente a 0/5 sellos! Ya puede comenzar a acumular nuevamente.`,
+      message: `¡Tarjeta de @${targetPseudonym} reiniciada exitosamente a 0/5 sellos! El cliente ya puede acumular su siguiente ciclo.`,
       client: {
         pseudonym: targetPseudonym,
         stamps: 0

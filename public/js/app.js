@@ -874,15 +874,15 @@ async function renderAdminDashboardView(container) {
       <div class="grid grid-cols-3 gap-2">
         <div class="glass-panel p-3 rounded-2xl text-center">
           <span class="text-[10px] text-slate-500 block font-bold">Clientes</span>
-          <span class="text-lg font-black text-slate-900">${m.totalClients}</span>
+          <span id="metric-total-clients" class="text-lg font-black text-slate-900">${m.totalClients}</span>
         </div>
         <div class="glass-panel p-3 rounded-2xl text-center">
           <span class="text-[10px] text-orange-600 block font-bold">Tarjetas 5/5</span>
-          <span class="text-lg font-black text-orange-600">${m.cardsCompleted}</span>
+          <span id="metric-cards-completed" class="text-lg font-black text-orange-600">${m.cardsCompleted}</span>
         </div>
         <div class="glass-panel p-3 rounded-2xl text-center">
           <span class="text-[10px] text-teal-700 block font-bold">Sellos Hoy</span>
-          <span class="text-lg font-black text-teal-700">${m.todayStamps}</span>
+          <span id="metric-today-stamps" class="text-lg font-black text-teal-700">${m.todayStamps}</span>
         </div>
       </div>
 
@@ -1006,6 +1006,21 @@ async function renderAdminDashboardView(container) {
   }
 }
 
+async function refreshAdminMetrics() {
+  try {
+    const metricsData = await API.getAdminMetrics();
+    if (metricsData && metricsData.metrics) {
+      const m = metricsData.metrics;
+      const elClients = document.getElementById('metric-total-clients');
+      const elCompleted = document.getElementById('metric-cards-completed');
+      const elToday = document.getElementById('metric-today-stamps');
+      if (elClients) elClients.textContent = m.totalClients;
+      if (elCompleted) elCompleted.textContent = m.cardsCompleted;
+      if (elToday) elToday.textContent = m.todayStamps;
+    }
+  } catch (e) {}
+}
+
 async function loadAdminClients(query = '') {
   const container = document.getElementById('clients-list-container');
   if (!container) return;
@@ -1017,48 +1032,53 @@ async function loadAdminClients(query = '') {
     if (clients.length === 0) {
       container.innerHTML = `
         <div class="text-center py-6 text-xs text-slate-500 font-medium">
-          No se encontraron clientes con el pseudónimo "${query}".
+          No se encontraron clientes con "${query}".
         </div>
       `;
       return;
     }
 
-    container.innerHTML = clients.map(c => `
+    container.innerHTML = clients.map(c => {
+      const safeId = String(c.id || c.pseudonym).replace(/'/g, "\\'");
+      const safePseudo = String(c.pseudonym).replace(/'/g, "\\'");
+
+      return `
       <div class="p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-orange-200 transition flex items-center justify-between gap-2 shadow-2xs">
-        <div class="space-y-0.5 cursor-pointer flex-1" onclick="navigateTo('#admin-cliente/${c.id}')">
-          <div class="flex items-center gap-2">
+        <div class="space-y-0.5 cursor-pointer flex-1" onclick="navigateTo('#admin-cliente/${encodeURIComponent(c.id || c.pseudonym)}')">
+          <div class="flex items-center gap-2 flex-wrap">
             <span class="font-bold text-xs text-slate-900">@${c.pseudonym}</span>
-            ${c.isBirthdayToday ? '<span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-bold">🎂 Cumple Hoy</span>' : ''}
+            <span class="text-[10px] text-slate-400 font-medium">🎂 ${c.birthdate || '-'}</span>
+            ${c.isBirthdayToday ? '<span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-bold">¡Cumple Hoy!</span>' : ''}
           </div>
-          <div class="flex items-center gap-2 text-[10px] text-slate-500">
+          <div class="flex items-center gap-2 text-[10px] text-slate-500 flex-wrap">
             <span>${c.email}</span>
             <span>•</span>
             <span class="font-mono ${c.stamps >= 5 ? 'text-rose-600 font-black' : 'text-orange-600 font-bold'}">${c.stamps}/5 sellos</span>
-            ${c.stamps >= 5 ? '<span class="bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded text-[9px] font-bold">¡Completo!</span>' : ''}
+            ${c.stamps >= 5 ? '<span class="bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded text-[9px] font-black">⭐ Meta 5/5</span>' : ''}
           </div>
         </div>
 
         <div class="flex items-center gap-1.5">
           ${c.stamps >= 5 ? `
             <!-- Botón Rápido de Reiniciar Tarjeta a 0 al completar los 5 sellos -->
-            <button onclick="quickResetCard(${c.id}, '${c.pseudonym}')" class="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-2.5 py-1.5 rounded-xl text-[11px] font-black transition flex items-center gap-1 shadow-xs" title="Tarjeta Completa: Reiniciar a 0 para nuevo ciclo">
+            <button onclick="quickResetCard('${safeId}', '${safePseudo}')" class="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-2.5 py-1.5 rounded-xl text-[11px] font-black transition flex items-center gap-1 shadow-xs" title="Tarjeta Completa: Reiniciar a 0 para nuevo ciclo">
               <span>🔄</span>
               <span>Reset 0</span>
             </button>
           ` : `
             <!-- Botón Rápido de +1 Sello -->
-            <button onclick="quickAddStamp(${c.id}, '${c.pseudonym}')" class="btn-primary px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs" title="Asignar +1 Sello al cierre de jornada">
+            <button onclick="quickAddStamp('${safeId}', '${safePseudo}')" class="btn-primary px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs" title="Asignar +1 Sello al cierre de jornada">
               <span>+1</span>
               <span class="text-[10px]">Sello</span>
             </button>
           `}
           
-          <button onclick="navigateTo('#admin-cliente/${c.id}')" class="p-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs" title="Ver Ficha Detallada">
+          <button onclick="navigateTo('#admin-cliente/${encodeURIComponent(c.id || c.pseudonym)}')" class="p-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs" title="Ver Ficha Detallada">
             👁️
           </button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
 
   } catch (err) {
     container.innerHTML = `<div class="text-xs text-rose-500 text-center py-2">${err.message}</div>`;
@@ -1067,10 +1087,17 @@ async function loadAdminClients(query = '') {
 
 async function quickAddStamp(clientId, pseudonym) {
   try {
-    const res = await API.addStamp({ clientId });
-    SoundEffects.playStamp();
-    showToast(res.message, 'success');
+    const res = await API.addStamp({ clientId, clientPseudonym: pseudonym });
+    if (res.client && res.client.isCompleted) {
+      SoundEffects.playVictory();
+      Confetti.launch(60);
+      showToast(res.message, 'success', 6500);
+    } else {
+      SoundEffects.playStamp();
+      showToast(res.message, 'success');
+    }
     loadAdminClients(document.getElementById('admin-search-input')?.value || '');
+    refreshAdminMetrics();
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1081,10 +1108,11 @@ async function quickResetCard(clientId, pseudonym) {
     return;
   }
   try {
-    const res = await API.resetClientCard({ clientId });
+    const res = await API.resetClientCard({ clientId, clientPseudonym: pseudonym });
     SoundEffects.playVictory();
     showToast(res.message, 'success');
     loadAdminClients(document.getElementById('admin-search-input')?.value || '');
+    refreshAdminMetrics();
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1192,7 +1220,7 @@ async function renderClientDetailAdminView(container, clientId) {
             </button>
           ` : `
             <!-- Botón Destacado de Reinicio a 0 cuando ya completó los 5 sellos -->
-            <button onclick="resetCardFromDetail(${client.id}, '${client.pseudonym}')" class="bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-orange-600 text-white w-full py-3 rounded-2xl text-sm font-black flex items-center justify-center gap-2 shadow-md transition">
+            <button onclick="resetCardFromDetail('${String(client.id || client.pseudonym).replace(/'/g, "\\'")}', '${String(client.pseudonym).replace(/'/g, "\\'")}')" class="bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-orange-600 text-white w-full py-3 rounded-2xl text-sm font-black flex items-center justify-center gap-2 shadow-md transition">
               <span>🔄 Reiniciar Cuenta a 0 Sellos (Nuevo Ciclo)</span>
             </button>
           `}
@@ -1210,7 +1238,7 @@ async function renderClientDetailAdminView(container, clientId) {
 
             <p class="text-xs text-slate-700 font-medium">${activeCoupon.title}</p>
 
-            <button onclick="redeemClientCoupon('${activeCoupon.code}', ${client.id})" class="btn-teal w-full py-2.5 rounded-2xl text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2">
+            <button onclick="redeemClientCoupon('${activeCoupon.code}', '${String(client.id || client.pseudonym).replace(/'/g, "\\'")}')" class="btn-teal w-full py-2.5 rounded-2xl text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2">
               <span>Canjear Cupón & Reiniciar Tarjeta a 0</span>
               <span>✅</span>
             </button>
@@ -1247,16 +1275,22 @@ async function renderClientDetailAdminView(container, clientId) {
 async function addStampFromDetail() {
   if (!currentClientDetail) return;
   const btn = document.getElementById('btn-add-stamp-detail');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
 
   try {
-    const res = await API.addStamp({ clientId: currentClientDetail.id });
-    SoundEffects.playStamp();
-    showToast(res.message, 'success');
-    await renderClientDetailAdminView(document.getElementById('app-view'), currentClientDetail.id);
+    const res = await API.addStamp({ clientId: currentClientDetail.id, clientPseudonym: currentClientDetail.pseudonym });
+    if (res.client && res.client.isCompleted) {
+      SoundEffects.playVictory();
+      Confetti.launch(70);
+      showToast(res.message, 'success', 6500);
+    } else {
+      SoundEffects.playStamp();
+      showToast(res.message, 'success');
+    }
+    await renderClientDetailAdminView(document.getElementById('app-view'), currentClientDetail.id || currentClientDetail.pseudonym);
   } catch (err) {
     showToast(err.message, 'error');
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -1266,10 +1300,10 @@ async function resetCardFromDetail(clientId, pseudonym) {
   }
 
   try {
-    const res = await API.resetClientCard({ clientId });
+    const res = await API.resetClientCard({ clientId, clientPseudonym: pseudonym });
     SoundEffects.playVictory();
     showToast(res.message, 'success');
-    await renderClientDetailAdminView(document.getElementById('app-view'), clientId);
+    await renderClientDetailAdminView(document.getElementById('app-view'), clientId || pseudonym);
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1394,7 +1428,7 @@ async function loadAdminPromotions() {
           <div class="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px] text-slate-400">
             <span>Por: @${p.admin_pseudonym}</span>
             ${!isExpired ? `
-              <button onclick="deleteAdminPromotion(${p.id}, '${p.title}')" class="text-rose-600 font-bold hover:underline flex items-center gap-1">
+              <button onclick="deleteAdminPromotion('${String(p.id).replace(/'/g, "\\'")}', '${String(p.title).replace(/'/g, "\\'")}')" class="text-rose-600 font-bold hover:underline flex items-center gap-1">
                 <span>🗑️ Desactivar</span>
               </button>
             ` : ''}

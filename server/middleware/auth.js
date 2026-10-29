@@ -1,9 +1,37 @@
+const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
 const { db } = require('../db');
 const firestore = require('../firestore');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'niji_peru_secret_key_2026_super_secure';
+// Derivar secreto JWT criptográfico: usa JWT_SECRET o combina con FIREBASE_API_KEY (secreto de entorno en Render)
+const RAW_SECRET = process.env.JWT_SECRET || (process.env.FIREBASE_API_KEY ? `niji_jwt_${process.env.FIREBASE_API_KEY}` : 'niji_peru_local_dev_secret_2026');
+const JWT_SECRET = crypto.createHash('sha256').update(RAW_SECRET).digest('hex');
 const JWT_EXPIRES_IN = '7d';
+
+// Limitador de intentos de inicio de sesión contra fuerza bruta (en memoria por IP)
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 10;
+const WINDOW_MS = 10 * 60 * 1000; // 10 minutos
+
+function rateLimitLogin(req, res, next) {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+
+  if (record && now < record.resetAt) {
+    if (record.count >= MAX_ATTEMPTS) {
+      const waitMins = Math.ceil((record.resetAt - now) / 60000);
+      return res.status(429).json({
+        success: false,
+        message: `Demasiados intentos de inicio de sesión. Por seguridad, espera ${waitMins} min.`
+      });
+    }
+    record.count += 1;
+  } else {
+    loginAttempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+  }
+  next();
+}
 
 /**
  * Middleware para autenticar token JWT
@@ -27,34 +55,39 @@ async function authenticateToken(req, res, next) {
       });
     }
 
-    let user = null;
+    try {
+      let user = null;
 
-    if (firestore.isFirestoreConfigured()) {
-      user = await firestore.getUserByPseudonym(decoded.pseudonym);
-    }
+      if (firestore.isFirestoreConfigured()) {
+        user = await firestore.getUserByPseudonym(decoded.pseudonym);
+      } else {
+        user = db.prepare(`
+          SELECT id, pseudonym, email, birthdate, role, stamps, has_spun_wheel, welcome_prize, accepts_promotions
+          FROM users WHERE pseudonym = ? COLLATE NOCASE OR id = ?
+        `).get(decoded.pseudonym || '', decoded.id || 0);
+      }
 
-    if (!user) {
-      // Fallback a SQLite local si no está en Firestore o no hay red
-      user = db.prepare(`
-        SELECT id, pseudonym, email, birthdate, role, stamps, has_spun_wheel, welcome_prize
-        FROM users WHERE pseudonym = ? COLLATE NOCASE OR id = ?
-      `).get(decoded.pseudonym || '', decoded.id || 0);
-    }
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'El usuario ya no existe en el sistema.'
+        });
+      }
 
-    if (!user) {
-      return res.status(404).json({
+      req.user = user;
+      next();
+    } catch (dbErr) {
+      console.error('Error verificando sesión en base de datos:', dbErr.message);
+      return res.status(503).json({
         success: false,
-        message: 'El usuario ya no existe en el sistema.'
+        message: 'Servicio de base de datos temporalmente no disponible. Intenta de nuevo.'
       });
     }
-
-    req.user = user;
-    next();
   });
 }
 
 /**
- * Middleware para restringir acceso por rol ('client' o 'admin')
+ * Middleware para restringir acceso estrictamente por rol ('client' o 'admin')
  */
 function requireRole(allowedRole) {
   return (req, res, next) => {
@@ -76,6 +109,7 @@ function requireRole(allowedRole) {
 module.exports = {
   JWT_SECRET,
   JWT_EXPIRES_IN,
+  rateLimitLogin,
   authenticateToken,
   requireRole
 };

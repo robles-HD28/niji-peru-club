@@ -78,8 +78,7 @@ async function register(req, res) {
     let existingUser = null;
     if (firestore.isFirestoreConfigured()) {
       existingUser = await firestore.getUserByPseudonym(cleanPseudonym) || await firestore.getUserByEmail(cleanEmail);
-    }
-    if (!existingUser) {
+    } else {
       existingUser = db.prepare(`
         SELECT id, pseudonym, email FROM users
         WHERE pseudonym = ? COLLATE NOCASE OR email = ? COLLATE NOCASE
@@ -103,7 +102,7 @@ async function register(req, res) {
     const salt = bcrypt.genSaltSync(10);
     const passwordHash = bcrypt.hashSync(password, salt);
 
-    // 8. Inserción en Cloud Firestore de Google
+    // 8. Inserción en Base de Datos (Firestore Cloud o Fallback SQLite)
     const userPayload = {
       pseudonym: cleanPseudonym,
       email: cleanEmail,
@@ -116,21 +115,19 @@ async function register(req, res) {
       accepts_promotions: optIn
     };
 
-    let newUserId = Date.now();
+    let newUserId = cleanPseudonym.toLowerCase();
     if (firestore.isFirestoreConfigured()) {
       const createdFirestore = await firestore.createUser(userPayload);
-      if (createdFirestore && createdFirestore.id) newUserId = createdFirestore.id;
-    }
-
-    // Réplica en SQLite local como fallback
-    try {
+      if (!createdFirestore) {
+        throw new Error('No se recibió confirmación de escritura desde Firestore.');
+      }
+      newUserId = createdFirestore.id || cleanPseudonym.toLowerCase();
+    } else {
       const result = db.prepare(`
         INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize, accepts_promotions)
         VALUES (?, ?, ?, ?, 'client', 0, 0, NULL, ?)
       `).run(cleanPseudonym, cleanEmail, cleanBirthdate, passwordHash, optIn);
-      if (!firestore.isFirestoreConfigured()) newUserId = Number(result.lastInsertRowid);
-    } catch (e) {
-      // Ignorar si en SQLite ya existía
+      newUserId = Number(result.lastInsertRowid);
     }
 
     // 9. Generar Token JWT

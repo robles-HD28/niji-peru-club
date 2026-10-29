@@ -1,11 +1,23 @@
 /**
  * Conector oficial a Google Cloud Firestore REST API para NIJI Perú Club
- * Utiliza fetch nativo de Node.js (cero dependencias externas pesadas)
+ * Utiliza fetch nativo de Node.js con paginación completa y caché en memoria
  */
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'niji-peru-club';
 const API_KEY = process.env.FIREBASE_API_KEY || '';
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+
+// Caché en memoria de corta duración (TTL 8s) para optimizar búsquedas y proteger cuota de lecturas
+const collectionCache = new Map();
+const CACHE_TTL_MS = 8000;
+
+function invalidateCache(collection) {
+  if (collection) {
+    collectionCache.delete(collection);
+  } else {
+    collectionCache.clear();
+  }
+}
 
 function isFirestoreConfigured() {
   return Boolean(PROJECT_ID && API_KEY);
@@ -44,8 +56,7 @@ function toFirestoreFields(obj) {
 function fromFirestoreDoc(doc) {
   if (!doc || !doc.fields) return null;
   const result = {};
-  
-  // Extraer el ID del documento a partir de su path completo (projects/.../documents/col/ID)
+
   if (doc.name) {
     const parts = doc.name.split('/');
     result.id = parts[parts.length - 1];
@@ -79,8 +90,7 @@ async function getDoc(collection, docId) {
   if (res.status === 404) return null;
   if (!res.ok) {
     const err = await res.text();
-    console.error(`Firestore getDoc error [${collection}/${docId}]:`, err);
-    return null;
+    throw new Error(`Firestore getDoc error [${collection}/${docId}] (${res.status}): ${err}`);
   }
   const data = await res.json();
   return fromFirestoreDoc(data);
@@ -95,8 +105,9 @@ async function setDoc(collection, docId, data) {
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Firestore setDoc error: ${err}`);
+    throw new Error(`Firestore setDoc error (${res.status}): ${err}`);
   }
+  invalidateCache(collection);
   const result = await res.json();
   return fromFirestoreDoc(result);
 }
@@ -110,28 +121,50 @@ async function addDoc(collection, data) {
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Firestore addDoc error: ${err}`);
+    throw new Error(`Firestore addDoc error (${res.status}): ${err}`);
   }
+  invalidateCache(collection);
   const result = await res.json();
   return fromFirestoreDoc(result);
 }
 
-async function queryCollection(collection) {
-  const url = `${BASE_URL}/${collection}?pageSize=100&key=${API_KEY}`;
-  const res = await fetch(url);
-  if (res.status === 404) return [];
-  if (!res.ok) {
-    console.error(`Firestore queryCollection error [${collection}]:`, await res.text());
-    return [];
+/**
+ * Consulta paginada completa con caché inteligente para evitar colapsos al crecer la BD
+ */
+async function queryCollection(collection, forceRefresh = false) {
+  const now = Date.now();
+  const cached = collectionCache.get(collection);
+  if (!forceRefresh && cached && (now - cached.timestamp) < CACHE_TTL_MS) {
+    return cached.docs;
   }
-  const data = await res.json();
-  if (!data.documents) return [];
-  return data.documents.map(fromFirestoreDoc);
+
+  let allDocs = [];
+  let pageToken = '';
+
+  do {
+    const tokenParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+    const url = `${BASE_URL}/${collection}?pageSize=300${tokenParam}&key=${API_KEY}`;
+    const res = await fetch(url);
+    if (res.status === 404) return [];
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Firestore queryCollection error [${collection}] (${res.status}): ${errText}`);
+    }
+    const data = await res.json();
+    if (data.documents && data.documents.length > 0) {
+      allDocs = allDocs.concat(data.documents.map(fromFirestoreDoc));
+    }
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+
+  collectionCache.set(collection, { docs: allDocs, timestamp: now });
+  return allDocs;
 }
 
 async function deleteDoc(collection, docId) {
   const url = `${BASE_URL}/${collection}/${encodeURIComponent(docId)}?key=${API_KEY}`;
   const res = await fetch(url, { method: 'DELETE' });
+  invalidateCache(collection);
   return res.ok;
 }
 
@@ -177,9 +210,10 @@ async function getAllClients(query = '') {
   if (!query) return clients;
 
   const q = query.toLowerCase().trim();
-  return clients.filter(c => 
-    (c.pseudonym || '').toLowerCase().includes(q) || 
-    (c.email || '').toLowerCase().includes(q)
+  return clients.filter(c =>
+    (c.pseudonym || '').toLowerCase().includes(q) ||
+    (c.email || '').toLowerCase().includes(q) ||
+    (c.birthdate || '').includes(q)
   );
 }
 
@@ -197,7 +231,6 @@ const DEFAULT_PRIZES = [
 async function getWheelPrizes() {
   const prizes = await queryCollection('wheel_prizes');
   if (prizes.length === 0 || prizes.length !== 6 || prizes[0].title !== 'Lapicero') {
-    // Sincronizar premios oficiales
     for (const p of DEFAULT_PRIZES) {
       await setDoc('wheel_prizes', p.id, p);
     }
@@ -228,7 +261,7 @@ async function getUserCoupons(pseudonym) {
 }
 
 async function redeemCouponByCode(code, adminPseudonym) {
-  const coupons = await queryCollection('coupons');
+  const coupons = await queryCollection('coupons', true);
   const target = coupons.find(c => (c.code || '').toUpperCase() === code.trim().toUpperCase());
   if (!target) return null;
 
@@ -244,7 +277,7 @@ async function redeemCouponByCode(code, adminPseudonym) {
 
 async function markUserCouponsAsRedeemed(pseudonym, adminPseudonym) {
   const clean = pseudonym.trim().toLowerCase();
-  const coupons = await queryCollection('coupons');
+  const coupons = await queryCollection('coupons', true);
   const userCoupons = coupons.filter(c => (c.user_pseudonym || '').toLowerCase() === clean && c.status === 'active');
   for (const c of userCoupons) {
     await setDoc('coupons', c.id, {
@@ -269,7 +302,9 @@ async function addStampHistory(item) {
 async function getUserStampHistory(pseudonym) {
   const clean = pseudonym.trim().toLowerCase();
   const allHistory = await queryCollection('stamps_history');
-  return allHistory.filter(h => (h.user_pseudonym || '').toLowerCase() === clean);
+  return allHistory
+    .filter(h => (h.user_pseudonym || '').toLowerCase() === clean)
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 }
 
 // ================= PROMOCIONES PROGRAMADAS =================
@@ -344,7 +379,6 @@ async function initFirestoreDatabase() {
       });
     }
 
-    // Inicializar o sincronizar premios oficiales de Ruleta en Firestore
     const existingPrizes = await queryCollection('wheel_prizes');
     if (existingPrizes.length !== 6 || existingPrizes[0].title !== 'Lapicero') {
       console.log('🎁 Sincronizando 6 opciones oficiales de Ruleta en Firestore...');
@@ -362,6 +396,8 @@ async function initFirestoreDatabase() {
 
 module.exports = {
   isFirestoreConfigured,
+  invalidateCache,
+  queryCollection,
   getUserByPseudonym,
   getUserByEmail,
   createUser,

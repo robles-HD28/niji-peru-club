@@ -1,6 +1,9 @@
 const { db } = require('../db');
 const firestore = require('../firestore');
 
+// Bloqueo en memoria contra condiciones de carrera (Race Condition) en giros simultáneos
+const activeSpinLocks = new Set();
+
 /**
  * Obtener lista de premios disponibles para la ruleta Spin-to-Win
  */
@@ -9,8 +12,7 @@ async function getPrizes(req, res) {
     let prizes = [];
     if (firestore.isFirestoreConfigured()) {
       prizes = await firestore.getWheelPrizes();
-    }
-    if (!prizes || prizes.length === 0) {
+    } else {
       prizes = db.prepare(`
         SELECT id, title, description, type, value, color, text_color, weight
         FROM wheel_prizes
@@ -33,17 +35,26 @@ async function getPrizes(req, res) {
 }
 
 /**
- * Ejecutar giro de la ruleta de bienvenida (Solo 1 vez por cliente registrado)
+ * Ejecutar giro de la ruleta de bienvenida (Protegido en servidor contra manipulación y concurrencia)
  */
 async function spinWheel(req, res) {
-  try {
-    const userSession = req.user;
+  const userSession = req.user;
+  const lockKey = (userSession.pseudonym || '').toLowerCase();
 
+  if (activeSpinLocks.has(lockKey)) {
+    return res.status(429).json({
+      success: false,
+      message: 'Ya hay un giro en curso para tu cuenta. Por favor espera unos segundos.'
+    });
+  }
+
+  activeSpinLocks.add(lockKey);
+
+  try {
     let user = null;
     if (firestore.isFirestoreConfigured()) {
       user = await firestore.getUserByPseudonym(userSession.pseudonym);
-    }
-    if (!user) {
+    } else {
       user = db.prepare('SELECT id, pseudonym, stamps, has_spun_wheel, welcome_prize FROM users WHERE id = ?').get(userSession.id);
     }
 
@@ -63,8 +74,7 @@ async function spinWheel(req, res) {
     let prizes = [];
     if (firestore.isFirestoreConfigured()) {
       prizes = await firestore.getWheelPrizes();
-    }
-    if (!prizes || prizes.length === 0) {
+    } else {
       prizes = db.prepare(`
         SELECT id, title, description, type, value, color, text_color, weight
         FROM wheel_prizes
@@ -73,11 +83,11 @@ async function spinWheel(req, res) {
       `).all();
     }
 
-    if (prizes.length === 0) {
+    if (!prizes || prizes.length === 0) {
       return res.status(500).json({ success: false, message: 'No hay premios configurados en este momento.' });
     }
 
-    // 3. Algoritmo de ruleta ponderada por peso
+    // 3. Algoritmo de ruleta ponderada ejecutado 100% en el servidor
     const totalWeight = prizes.reduce((acc, p) => acc + (p.weight || 1), 0);
     let randomNum = Math.random() * totalWeight;
     let selectedPrize = prizes[0];
@@ -106,17 +116,14 @@ async function spinWheel(req, res) {
       prizeRecordTitle = '🍍 (Sin premio)';
     }
 
-    // 5. Actualizar usuario en Firestore de forma permanente
+    // 5. Persistir resultado de forma atómica
     if (firestore.isFirestoreConfigured()) {
       await firestore.updateUser(user.pseudonym, {
         has_spun_wheel: hasSpun,
         welcome_prize: prizeRecordTitle,
         stamps: newStamps
       });
-    }
-
-    // Réplica en SQLite
-    try {
+    } else {
       db.prepare(`
         UPDATE users
         SET has_spun_wheel = ?,
@@ -125,7 +132,7 @@ async function spinWheel(req, res) {
             updated_at = datetime('now', 'localtime')
         WHERE pseudonym = ? COLLATE NOCASE OR id = ?
       `).run(hasSpun, prizeRecordTitle, newStamps, user.pseudonym, user.id || 0);
-    } catch (e) {}
+    }
 
     let customMessage = `¡Felicitaciones! Has ganado: ${selectedPrize.title}`;
     if (selectedPrize.type === 'spin_again') {
@@ -148,8 +155,10 @@ async function spinWheel(req, res) {
     console.error('Error en spinWheel:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al procesar el giro de la ruleta.'
+      message: 'Error al procesar el giro de la ruleta. Tu giro no se ha consumido, intenta nuevamente.'
     });
+  } finally {
+    activeSpinLocks.delete(lockKey);
   }
 }
 
