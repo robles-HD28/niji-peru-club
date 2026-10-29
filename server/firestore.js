@@ -309,31 +309,54 @@ async function getUserStampHistory(pseudonym) {
 
 // ================= PROMOCIONES PROGRAMADAS =================
 
-async function getActivePromotions() {
-  const allPromos = await queryCollection('promotions');
+async function getActivePromotions(forceRefresh = false) {
+  const allPromos = await queryCollection('promotions', forceRefresh);
   const now = new Date();
 
   return allPromos.filter(p => {
-    if (p.is_active === 0) return false;
+    if (p.is_active === 0 || p.is_active === false) return false;
     const expiresAt = new Date(p.expires_at);
     return expiresAt > now;
   });
 }
 
-async function getAllPromotions() {
-  return await queryCollection('promotions');
+async function getAllPromotions(forceRefresh = false) {
+  return await queryCollection('promotions', forceRefresh);
 }
 
 async function createPromotion(promoObj) {
-  return await addDoc('promotions', {
+  const res = await addDoc('promotions', {
     ...promoObj,
     is_active: 1,
     created_at: new Date().toISOString()
   });
+  invalidateCache('promotions');
+  return res;
+}
+
+async function deactivatePromotion(promoId) {
+  const cleanId = String(promoId).trim();
+  let doc = await getDoc('promotions', cleanId);
+  if (!doc) {
+    const all = await queryCollection('promotions', true);
+    doc = all.find(p => String(p.id) === cleanId);
+  }
+  if (doc) {
+    await setDoc('promotions', doc.id, {
+      ...doc,
+      is_active: 0,
+      deactivated_at: new Date().toISOString()
+    });
+    invalidateCache('promotions');
+    return true;
+  }
+  return false;
 }
 
 async function deletePromotion(promoId) {
-  return await deleteDoc('promotions', promoId);
+  const res = await deleteDoc('promotions', promoId);
+  invalidateCache('promotions');
+  return res;
 }
 
 // ================= INICIALIZACIÓN DE FIRESTORE =================
@@ -414,6 +437,7 @@ module.exports = {
   getActivePromotions,
   getAllPromotions,
   createPromotion,
+  deactivatePromotion,
   deletePromotion,
   initFirestoreDatabase
 };

@@ -26,6 +26,14 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
   }
 }));
 
+// Desactivar caché HTTP en rutas API para garantizar datos en tiempo real
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Rutas de API REST
 app.use('/api', apiRoutes);
 

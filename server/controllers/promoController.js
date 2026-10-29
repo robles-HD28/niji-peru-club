@@ -84,12 +84,13 @@ async function getAllPromotions(req, res) {
     let promos = [];
 
     if (firestore.isFirestoreConfigured()) {
-      const cloudPromos = await firestore.getAllPromotions();
+      // Forzar lectura fresca para el panel de administración
+      const cloudPromos = await firestore.getAllPromotions(true);
       const nowMs = Date.now();
 
       promos = cloudPromos.map(p => {
         const expMs = new Date(p.expires_at).getTime();
-        const is_expired = expMs <= nowMs ? 1 : 0;
+        const is_expired = (expMs <= nowMs || p.is_active === 0 || p.is_active === false) ? 1 : 0;
         const minutes_remaining = Math.max(0, Math.round((expMs - nowMs) / 60000));
         return {
           id: p.id,
@@ -98,7 +99,7 @@ async function getAllPromotions(req, res) {
           tag: p.tag || 'PROMO',
           starts_at: p.starts_at,
           expires_at: p.expires_at,
-          is_active: p.is_active !== undefined ? p.is_active : 1,
+          is_active: (p.is_active === 0 || p.is_active === false) ? 0 : 1,
           is_expired,
           minutes_remaining,
           admin_pseudonym: p.admin_pseudonym || 'Admin',
@@ -224,30 +225,28 @@ async function createPromotion(req, res) {
 }
 
 /**
- * Desactivar o eliminar promoción de inmediato (Admin/Cajero)
+ * Desactivar promoción de inmediato (Admin/Cajero)
  */
 async function deletePromotion(req, res) {
   try {
     const { id } = req.params;
 
     if (firestore.isFirestoreConfigured()) {
-      await firestore.deletePromotion(id);
-    }
-
-    try {
+      await firestore.deactivatePromotion(id);
+    } else {
       db.prepare('UPDATE promotions SET is_active = 0 WHERE id = ?').run(id);
-    } catch (e) {}
+    }
 
     return res.json({
       success: true,
-      message: `La promoción ha sido desactivada del panel de clientes.`
+      message: 'La promoción ha sido desactivada del panel de clientes exitosamente.'
     });
 
   } catch (error) {
     console.error('Error en deletePromotion:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al desactivar la promoción.'
+      message: 'Error al desactivar la promoción: ' + error.message
     });
   }
 }

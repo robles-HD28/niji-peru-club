@@ -1402,11 +1402,12 @@ async function loadAdminPromotions() {
     }
 
     container.innerHTML = promos.map(p => {
-      const isExpired = p.is_expired === 1 || p.is_active === 0;
+      const isExpired = p.is_expired === 1 || p.is_active === 0 || p.is_active === false;
+      const safeId = String(p.id).replace(/'/g, "\\'");
 
       let remainingBadge = '';
       if (isExpired) {
-        remainingBadge = '<span class="text-[9px] bg-slate-200 text-slate-500 font-bold px-2 py-0.5 rounded-full">Expirada / Inactiva</span>';
+        remainingBadge = '<span class="text-[9px] bg-slate-200 text-slate-600 font-bold px-2 py-0.5 rounded-full">Expirada / Inactiva</span>';
       } else {
         const mins = p.minutes_remaining;
         const timeText = mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.floor(mins / 60)}h` : `${Math.floor(mins / 1440)}d`;
@@ -1414,24 +1415,28 @@ async function loadAdminPromotions() {
       }
 
       return `
-        <div class="p-3 rounded-2xl ${isExpired ? 'bg-slate-100/60 opacity-60' : 'bg-slate-50 border border-slate-200/80'} text-xs space-y-1.5 shadow-2xs">
+        <div id="promo-card-${safeId}" class="p-3 rounded-2xl ${isExpired ? 'bg-slate-100/70 opacity-60' : 'bg-slate-50 border border-slate-200/80'} text-xs space-y-1.5 shadow-2xs transition-all duration-300">
           <div class="flex items-center justify-between">
             <span class="text-[9px] font-black px-2 py-0.5 rounded-full ${p.tag === 'FLASH' ? 'bg-rose-500 text-white' : 'bg-orange-500 text-white'}">
               ${p.tag}
             </span>
-            ${remainingBadge}
+            <div id="promo-badge-${safeId}">${remainingBadge}</div>
           </div>
 
           <h5 class="font-black text-slate-900">${p.title}</h5>
-          <p class="text-[11px] text-slate-600 font-medium">${p.message}</p>
+          <p class="text-[11px] text-slate-600 font-medium leading-relaxed">${p.message}</p>
 
           <div class="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px] text-slate-400">
             <span>Por: @${p.admin_pseudonym}</span>
-            ${!isExpired ? `
-              <button onclick="deleteAdminPromotion('${String(p.id).replace(/'/g, "\\'")}', '${String(p.title).replace(/'/g, "\\'")}')" class="text-rose-600 font-bold hover:underline flex items-center gap-1">
-                <span>🗑️ Desactivar</span>
-              </button>
-            ` : ''}
+            <div id="promo-actions-${safeId}">
+              ${!isExpired ? `
+                <button type="button" onclick="deactivateAdminPromotion('${safeId}', this)" class="text-rose-600 font-bold hover:underline flex items-center gap-1 cursor-pointer">
+                  <span>🗑️ Desactivar</span>
+                </button>
+              ` : `
+                <span class="text-slate-400 font-medium">Inactiva</span>
+              `}
+            </div>
           </div>
         </div>
       `;
@@ -1442,16 +1447,45 @@ async function loadAdminPromotions() {
   }
 }
 
-async function deleteAdminPromotion(id, title) {
-  if (!confirm(`¿Deseas retirar de inmediato la promoción "${title}" del panel de clientes?`)) {
-    return;
+async function deactivateAdminPromotion(id, btnElement) {
+  if (btnElement) {
+    btnElement.disabled = true;
+    btnElement.innerHTML = '<span class="inline-block w-3 h-3 border-2 border-rose-500 border-t-transparent rounded-full animate-spin"></span> <span class="text-slate-400">Desactivando...</span>';
   }
 
   try {
     const res = await API.deletePromotion(id);
-    showToast(res.message, 'info');
-    loadAdminPromotions();
+    showToast(res.message, 'success');
+
+    // Modificación visual instantánea en el DOM
+    const card = document.getElementById(`promo-card-${id}`);
+    const badge = document.getElementById(`promo-badge-${id}`);
+    const actions = document.getElementById(`promo-actions-${id}`);
+
+    if (card) {
+      card.classList.add('opacity-60', 'bg-slate-100/70');
+      card.classList.remove('bg-slate-50', 'border-slate-200/80');
+    }
+    if (badge) {
+      badge.innerHTML = '<span class="text-[9px] bg-slate-200 text-slate-600 font-bold px-2 py-0.5 rounded-full">Expirada / Inactiva</span>';
+    }
+    if (actions) {
+      actions.innerHTML = '<span class="text-slate-400 font-medium">Inactiva</span>';
+    }
+
+    // Re-sincronizar listado en segundo plano
+    setTimeout(() => loadAdminPromotions(), 400);
+
   } catch (err) {
-    showToast(err.message, 'error');
+    showToast(err.message || 'Error al desactivar la promoción.', 'error');
+    if (btnElement) {
+      btnElement.disabled = false;
+      btnElement.innerHTML = '<span>🗑️ Desactivar</span>';
+    }
   }
+}
+
+// Mantener alias de compatibilidad
+async function deleteAdminPromotion(id) {
+  return deactivateAdminPromotion(id);
 }
