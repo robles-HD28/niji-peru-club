@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { db } = require('../db');
+const firestore = require('../firestore');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../middleware/auth');
 const { getBirthdayStatus } = require('../utils/birthday');
 
@@ -8,7 +9,7 @@ const { getBirthdayStatus } = require('../utils/birthday');
  * Registro de Cliente (Vista Cliente)
  * Campos: Pseudónimo, Correo electrónico, Fecha de nacimiento, Contraseña y Confirmación de contraseña
  */
-function register(req, res) {
+async function register(req, res) {
   try {
     const { pseudonym, email, birthdate, password, confirmPassword } = req.body;
 
@@ -24,7 +25,7 @@ function register(req, res) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanBirthdate = birthdate.trim();
 
-    // 2. Validación de formato de pseudónimo (3 a 25 caracteres, sin espacios intermedios)
+    // 2. Validación de formato de pseudónimo
     if (cleanPseudonym.length < 3 || cleanPseudonym.length > 25) {
       return res.status(400).json({
         success: false,
@@ -48,20 +49,12 @@ function register(req, res) {
       });
     }
 
-    // 4. Validación de fecha de nacimiento (YYYY-MM-DD y edad lógica)
+    // 4. Validación de fecha de nacimiento
     const birthDateObj = new Date(cleanBirthdate);
     if (isNaN(birthDateObj.getTime())) {
       return res.status(400).json({
         success: false,
         message: 'Formato de fecha de nacimiento inválido. Debe ser AAAA-MM-DD.'
-      });
-    }
-
-    const today = new Date();
-    if (birthDateObj >= today) {
-      return res.status(400).json({
-        success: false,
-        message: 'La fecha de nacimiento debe ser anterior al día de hoy.'
       });
     }
 
@@ -80,11 +73,17 @@ function register(req, res) {
       });
     }
 
-    // 6. Verificar duplicados (Pseudónimo o Correo)
-    const existingUser = db.prepare(`
-      SELECT id, pseudonym, email FROM users
-      WHERE pseudonym = ? COLLATE NOCASE OR email = ? COLLATE NOCASE
-    `).get(cleanPseudonym, cleanEmail);
+    // 6. Verificar duplicados en Firestore o SQLite
+    let existingUser = null;
+    if (firestore.isFirestoreConfigured()) {
+      existingUser = await firestore.getUserByPseudonym(cleanPseudonym) || await firestore.getUserByEmail(cleanEmail);
+    }
+    if (!existingUser) {
+      existingUser = db.prepare(`
+        SELECT id, pseudonym, email FROM users
+        WHERE pseudonym = ? COLLATE NOCASE OR email = ? COLLATE NOCASE
+      `).get(cleanPseudonym, cleanEmail);
+    }
 
     if (existingUser) {
       if (existingUser.pseudonym.toLowerCase() === cleanPseudonym.toLowerCase()) {
@@ -103,13 +102,34 @@ function register(req, res) {
     const salt = bcrypt.genSaltSync(10);
     const passwordHash = bcrypt.hashSync(password, salt);
 
-    // 8. Inserción en la base de datos (con rol client y 0 sellos)
-    const result = db.prepare(`
-      INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize)
-      VALUES (?, ?, ?, ?, 'client', 0, 0, NULL)
-    `).run(cleanPseudonym, cleanEmail, cleanBirthdate, passwordHash);
+    // 8. Inserción en Cloud Firestore de Google
+    const userPayload = {
+      pseudonym: cleanPseudonym,
+      email: cleanEmail,
+      birthdate: cleanBirthdate,
+      password_hash: passwordHash,
+      role: 'client',
+      stamps: 0,
+      has_spun_wheel: 0,
+      welcome_prize: null
+    };
 
-    const newUserId = Number(result.lastInsertRowid);
+    let newUserId = Date.now();
+    if (firestore.isFirestoreConfigured()) {
+      const createdFirestore = await firestore.createUser(userPayload);
+      if (createdFirestore && createdFirestore.id) newUserId = createdFirestore.id;
+    }
+
+    // Réplica en SQLite local como fallback
+    try {
+      const result = db.prepare(`
+        INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize)
+        VALUES (?, ?, ?, ?, 'client', 0, 0, NULL)
+      `).run(cleanPseudonym, cleanEmail, cleanBirthdate, passwordHash);
+      if (!firestore.isFirestoreConfigured()) newUserId = Number(result.lastInsertRowid);
+    } catch (e) {
+      // Ignorar si en SQLite ya existía
+    }
 
     // 9. Generar Token JWT
     const token = jwt.sign(
@@ -135,7 +155,7 @@ function register(req, res) {
         welcome_prize: null,
         birthdayInfo
       },
-      must_spin_wheel: true // Redirección por única vez a la ruleta Spin-to-Win
+      must_spin_wheel: true
     });
 
   } catch (error) {
@@ -149,9 +169,8 @@ function register(req, res) {
 
 /**
  * Inicio de Sesión de Cliente (Vista Cliente)
- * Acceso exclusivo mediante Pseudónimo y Contraseña
  */
-function loginClient(req, res) {
+async function loginClient(req, res) {
   try {
     const { pseudonym, password } = req.body;
 
@@ -164,9 +183,15 @@ function loginClient(req, res) {
 
     const cleanPseudonym = pseudonym.trim();
 
-    const user = db.prepare(`
-      SELECT * FROM users WHERE pseudonym = ? COLLATE NOCASE
-    `).get(cleanPseudonym);
+    let user = null;
+    if (firestore.isFirestoreConfigured()) {
+      user = await firestore.getUserByPseudonym(cleanPseudonym);
+    }
+    if (!user) {
+      user = db.prepare(`
+        SELECT * FROM users WHERE pseudonym = ? COLLATE NOCASE
+      `).get(cleanPseudonym);
+    }
 
     if (!user) {
       return res.status(401).json({
@@ -175,7 +200,6 @@ function loginClient(req, res) {
       });
     }
 
-    // Verificar si intentó entrar un admin por el portal de clientes
     if (user.role !== 'client') {
       return res.status(403).json({
         success: false,
@@ -191,9 +215,8 @@ function loginClient(req, res) {
       });
     }
 
-    // Generar Token JWT
     const token = jwt.sign(
-      { id: user.id, pseudonym: user.pseudonym, role: user.role },
+      { id: user.id || user.pseudonym, pseudonym: user.pseudonym, role: user.role },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
@@ -205,13 +228,13 @@ function loginClient(req, res) {
       message: `¡Hola de nuevo, ${user.pseudonym}!`,
       token,
       user: {
-        id: user.id,
+        id: user.id || user.pseudonym,
         pseudonym: user.pseudonym,
         email: user.email,
         birthdate: user.birthdate,
         role: user.role,
-        stamps: user.stamps,
-        has_spun_wheel: user.has_spun_wheel,
+        stamps: user.stamps || 0,
+        has_spun_wheel: user.has_spun_wheel || 0,
         welcome_prize: user.welcome_prize,
         birthdayInfo
       },
@@ -229,9 +252,8 @@ function loginClient(req, res) {
 
 /**
  * Inicio de Sesión de Administrador / Cajero (Vista Admin)
- * Portal exclusivo para el personal de tienda
  */
-function loginAdmin(req, res) {
+async function loginAdmin(req, res) {
   try {
     const { pseudonym, password } = req.body;
 
@@ -244,9 +266,15 @@ function loginAdmin(req, res) {
 
     const cleanPseudonym = pseudonym.trim();
 
-    const user = db.prepare(`
-      SELECT * FROM users WHERE pseudonym = ? COLLATE NOCASE
-    `).get(cleanPseudonym);
+    let user = null;
+    if (firestore.isFirestoreConfigured()) {
+      user = await firestore.getUserByPseudonym(cleanPseudonym);
+    }
+    if (!user) {
+      user = db.prepare(`
+        SELECT * FROM users WHERE pseudonym = ? COLLATE NOCASE
+      `).get(cleanPseudonym);
+    }
 
     if (!user || user.role !== 'admin') {
       return res.status(401).json({
@@ -264,7 +292,7 @@ function loginAdmin(req, res) {
     }
 
     const token = jwt.sign(
-      { id: user.id, pseudonym: user.pseudonym, role: user.role },
+      { id: user.id || user.pseudonym, pseudonym: user.pseudonym, role: user.role },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
@@ -274,7 +302,7 @@ function loginAdmin(req, res) {
       message: 'Bienvenido al Portal de Administración NIJI Perú.',
       token,
       user: {
-        id: user.id,
+        id: user.id || user.pseudonym,
         pseudonym: user.pseudonym,
         email: user.email,
         role: user.role
@@ -293,29 +321,34 @@ function loginAdmin(req, res) {
 /**
  * Obtener perfil del usuario en sesión actual (/api/auth/me)
  */
-function getMe(req, res) {
+async function getMe(req, res) {
   try {
     const user = req.user;
     const birthdayInfo = getBirthdayStatus(user.birthdate);
 
-    // Obtener cupón activo si tiene
-    const activeCoupon = db.prepare(`
-      SELECT id, code, title, description, status, created_at
-      FROM coupons
-      WHERE user_id = ? AND status = 'active'
-      ORDER BY id DESC LIMIT 1
-    `).get(user.id);
+    let activeCoupon = null;
+    if (firestore.isFirestoreConfigured()) {
+      activeCoupon = await firestore.getActiveCoupon(user.pseudonym);
+    }
+    if (!activeCoupon) {
+      activeCoupon = db.prepare(`
+        SELECT id, code, title, description, status, created_at
+        FROM coupons
+        WHERE user_id = ? AND status = 'active'
+        ORDER BY id DESC LIMIT 1
+      `).get(user.id);
+    }
 
     return res.json({
       success: true,
       user: {
-        id: user.id,
+        id: user.id || user.pseudonym,
         pseudonym: user.pseudonym,
         email: user.email,
         birthdate: user.birthdate,
         role: user.role,
-        stamps: user.stamps,
-        has_spun_wheel: user.has_spun_wheel,
+        stamps: user.stamps || 0,
+        has_spun_wheel: user.has_spun_wheel || 0,
         welcome_prize: user.welcome_prize,
         birthdayInfo
       },

@@ -1,16 +1,23 @@
 const { db } = require('../db');
+const firestore = require('../firestore');
 
 /**
  * Obtener lista de premios disponibles para la ruleta Spin-to-Win
  */
-function getPrizes(req, res) {
+async function getPrizes(req, res) {
   try {
-    const prizes = db.prepare(`
-      SELECT id, title, description, type, value, color, text_color, weight
-      FROM wheel_prizes
-      WHERE is_active = 1
-      ORDER BY id ASC
-    `).all();
+    let prizes = [];
+    if (firestore.isFirestoreConfigured()) {
+      prizes = await firestore.getWheelPrizes();
+    }
+    if (!prizes || prizes.length === 0) {
+      prizes = db.prepare(`
+        SELECT id, title, description, type, value, color, text_color, weight
+        FROM wheel_prizes
+        WHERE is_active = 1
+        ORDER BY id ASC
+      `).all();
+    }
 
     return res.json({
       success: true,
@@ -28,12 +35,17 @@ function getPrizes(req, res) {
 /**
  * Ejecutar giro de la ruleta de bienvenida (Solo 1 vez por cliente registrado)
  */
-function spinWheel(req, res) {
+async function spinWheel(req, res) {
   try {
-    const userId = req.user.id;
+    const userSession = req.user;
 
-    // 1. Verificar si el usuario ya giró la ruleta
-    const user = db.prepare('SELECT id, pseudonym, stamps, has_spun_wheel, welcome_prize FROM users WHERE id = ?').get(userId);
+    let user = null;
+    if (firestore.isFirestoreConfigured()) {
+      user = await firestore.getUserByPseudonym(userSession.pseudonym);
+    }
+    if (!user) {
+      user = db.prepare('SELECT id, pseudonym, stamps, has_spun_wheel, welcome_prize FROM users WHERE id = ?').get(userSession.id);
+    }
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
@@ -48,12 +60,18 @@ function spinWheel(req, res) {
     }
 
     // 2. Obtener premios activos
-    const prizes = db.prepare(`
-      SELECT id, title, description, type, value, color, text_color, weight
-      FROM wheel_prizes
-      WHERE is_active = 1
-      ORDER BY id ASC
-    `).all();
+    let prizes = [];
+    if (firestore.isFirestoreConfigured()) {
+      prizes = await firestore.getWheelPrizes();
+    }
+    if (!prizes || prizes.length === 0) {
+      prizes = db.prepare(`
+        SELECT id, title, description, type, value, color, text_color, weight
+        FROM wheel_prizes
+        WHERE is_active = 1
+        ORDER BY id ASC
+      `).all();
+    }
 
     if (prizes.length === 0) {
       return res.status(500).json({ success: false, message: 'No hay premios configurados en este momento.' });
@@ -75,20 +93,31 @@ function spinWheel(req, res) {
     }
 
     // 4. Aplicar premio si otorga sellos
-    let newStamps = user.stamps;
+    let newStamps = user.stamps || 0;
     if (selectedPrize.type === 'stamp' && selectedPrize.value > 0) {
-      newStamps = Math.min(5, user.stamps + selectedPrize.value);
+      newStamps = Math.min(5, newStamps + selectedPrize.value);
     }
 
-    // 5. Actualizar usuario de forma atómica
-    db.prepare(`
-      UPDATE users
-      SET has_spun_wheel = 1,
-          welcome_prize = ?,
-          stamps = ?,
-          updated_at = datetime('now', 'localtime')
-      WHERE id = ?
-    `).run(selectedPrize.title, newStamps, userId);
+    // 5. Actualizar usuario en Firestore de forma permanente
+    if (firestore.isFirestoreConfigured()) {
+      await firestore.updateUser(user.pseudonym, {
+        has_spun_wheel: 1,
+        welcome_prize: selectedPrize.title,
+        stamps: newStamps
+      });
+    }
+
+    // Réplica en SQLite
+    try {
+      db.prepare(`
+        UPDATE users
+        SET has_spun_wheel = 1,
+            welcome_prize = ?,
+            stamps = ?,
+            updated_at = datetime('now', 'localtime')
+        WHERE pseudonym = ? COLLATE NOCASE OR id = ?
+      `).run(selectedPrize.title, newStamps, user.pseudonym, user.id || 0);
+    } catch (e) {}
 
     return res.json({
       success: true,

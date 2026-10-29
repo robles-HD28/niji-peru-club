@@ -1,20 +1,45 @@
 const { db } = require('../db');
+const firestore = require('../firestore');
 
 /**
  * Obtener promociones activas y vigentes (Para el panel del cliente)
  * Solo muestra aquellas cuyo tiempo programado aún no ha expirado
  */
-function getActivePromotions(req, res) {
+async function getActivePromotions(req, res) {
   try {
-    const promos = db.prepare(`
-      SELECT id, title, message, tag, starts_at, expires_at, created_at,
-             strftime('%Y-%m-%d %H:%M:%S', expires_at) as expires_at_formatted,
-             CAST((strftime('%s', expires_at) - strftime('%s', datetime('now', 'localtime'))) / 60 AS INTEGER) as minutes_remaining
-      FROM promotions
-      WHERE is_active = 1
-        AND datetime(expires_at) > datetime('now', 'localtime')
-      ORDER BY id DESC
-    `).all();
+    let promos = [];
+
+    if (firestore.isFirestoreConfigured()) {
+      const cloudPromos = await firestore.getActivePromotions();
+      const nowMs = Date.now();
+
+      promos = cloudPromos.map(p => {
+        const expMs = new Date(p.expires_at).getTime();
+        const minutes_remaining = Math.max(0, Math.round((expMs - nowMs) / 60000));
+        return {
+          id: p.id,
+          title: p.title,
+          message: p.message,
+          tag: p.tag || 'PROMO',
+          starts_at: p.starts_at,
+          expires_at: p.expires_at,
+          created_at: p.created_at,
+          minutes_remaining
+        };
+      });
+    }
+
+    if (promos.length === 0 && !firestore.isFirestoreConfigured()) {
+      promos = db.prepare(`
+        SELECT id, title, message, tag, starts_at, expires_at, created_at,
+               strftime('%Y-%m-%d %H:%M:%S', expires_at) as expires_at_formatted,
+               CAST((strftime('%s', expires_at) - strftime('%s', datetime('now', 'localtime'))) / 60 AS INTEGER) as minutes_remaining
+        FROM promotions
+        WHERE is_active = 1
+          AND datetime(expires_at) > datetime('now', 'localtime')
+        ORDER BY id DESC
+      `).all();
+    }
 
     // Formatear mensaje amigable de tiempo restante
     const formattedPromos = promos.map(p => {
@@ -54,21 +79,49 @@ function getActivePromotions(req, res) {
 /**
  * Obtener todas las promociones (Para el panel del cajero/admin)
  */
-function getAllPromotions(req, res) {
+async function getAllPromotions(req, res) {
   try {
-    const promos = db.prepare(`
-      SELECT p.id, p.title, p.message, p.tag, p.starts_at, p.expires_at, p.is_active, p.created_at,
-             u.pseudonym as admin_pseudonym,
-             CASE 
-               WHEN datetime(p.expires_at) <= datetime('now', 'localtime') THEN 1 
-               ELSE 0 
-             END as is_expired,
-             CAST((strftime('%s', p.expires_at) - strftime('%s', datetime('now', 'localtime'))) / 60 AS INTEGER) as minutes_remaining
-      FROM promotions p
-      JOIN users u ON p.admin_id = u.id
-      ORDER BY p.id DESC
-      LIMIT 30
-    `).all();
+    let promos = [];
+
+    if (firestore.isFirestoreConfigured()) {
+      const cloudPromos = await firestore.getAllPromotions();
+      const nowMs = Date.now();
+
+      promos = cloudPromos.map(p => {
+        const expMs = new Date(p.expires_at).getTime();
+        const is_expired = expMs <= nowMs ? 1 : 0;
+        const minutes_remaining = Math.max(0, Math.round((expMs - nowMs) / 60000));
+        return {
+          id: p.id,
+          title: p.title,
+          message: p.message,
+          tag: p.tag || 'PROMO',
+          starts_at: p.starts_at,
+          expires_at: p.expires_at,
+          is_active: p.is_active !== undefined ? p.is_active : 1,
+          is_expired,
+          minutes_remaining,
+          admin_pseudonym: p.admin_pseudonym || 'Admin',
+          created_at: p.created_at
+        };
+      });
+    }
+
+    if (promos.length === 0 && !firestore.isFirestoreConfigured()) {
+      promos = db.prepare(`
+        SELECT p.id, p.title, p.message, p.tag, p.starts_at, p.expires_at, p.is_active, p.created_at,
+               u.pseudonym as admin_pseudonym,
+               CASE 
+                 WHEN datetime(p.expires_at) <= datetime('now', 'localtime') THEN 1 
+                 ELSE 0 
+               END as is_expired,
+               CAST((strftime('%s', p.expires_at) - strftime('%s', datetime('now', 'localtime'))) / 60 AS INTEGER) as minutes_remaining
+        FROM promotions p
+        JOIN users u ON p.admin_id = u.id
+        ORDER BY p.id DESC
+        LIMIT 30
+      `).all();
+    }
 
     return res.json({
       success: true,
@@ -87,9 +140,10 @@ function getAllPromotions(req, res) {
 /**
  * Crear una nueva promoción con programación de tiempo (Admin/Cajero)
  */
-function createPromotion(req, res) {
+async function createPromotion(req, res) {
   try {
-    const adminId = req.user.id;
+    const adminPseudonym = req.user.pseudonym;
+    const adminId = req.user.id || adminPseudonym;
     const { title, message, tag, durationHours, customExpiresAt } = req.body;
 
     if (!title || !message) {
@@ -103,14 +157,11 @@ function createPromotion(req, res) {
     const cleanMessage = message.trim();
     const cleanTag = (tag || 'PROMO').trim().toUpperCase();
 
-    let expiresAtSQL = '';
+    let expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h por defecto
 
     if (durationHours && Number(durationHours) > 0) {
-      // Calcular expiración sumando horas a la hora local actual de SQLite
-      const hours = parseInt(durationHours, 10);
-      expiresAtSQL = `datetime('now', 'localtime', '+${hours} hours')`;
+      expiresAt = new Date(Date.now() + Number(durationHours) * 60 * 60 * 1000);
     } else if (customExpiresAt) {
-      // Validar fecha personalizada
       const targetDate = new Date(customExpiresAt);
       if (isNaN(targetDate.getTime()) || targetDate <= new Date()) {
         return res.status(400).json({
@@ -118,28 +169,49 @@ function createPromotion(req, res) {
           message: 'La fecha y hora de expiración debe ser en el futuro.'
         });
       }
-      const formattedDate = targetDate.toISOString().replace('T', ' ').substring(0, 19);
-      expiresAtSQL = `'${formattedDate}'`;
-    } else {
-      // Por defecto: 24 horas de vigencia
-      expiresAtSQL = "datetime('now', 'localtime', '+24 hours')";
+      expiresAt = targetDate;
     }
 
-    // Insertar promoción con fecha de expiración calculada
-    const insertQuery = `
-      INSERT INTO promotions (admin_id, title, message, tag, starts_at, expires_at, is_active)
-      VALUES (?, ?, ?, ?, datetime('now', 'localtime'), ${expiresAtSQL}, 1)
-    `;
+    const nowISO = new Date().toISOString();
+    const expiresISO = expiresAt.toISOString();
 
-    const result = db.prepare(insertQuery).run(adminId, cleanTitle, cleanMessage, cleanTag);
-    const newId = Number(result.lastInsertRowid);
+    let createdPromo = null;
 
-    const createdPromo = db.prepare('SELECT * FROM promotions WHERE id = ?').get(newId);
+    if (firestore.isFirestoreConfigured()) {
+      createdPromo = await firestore.createPromotion({
+        admin_pseudonym: adminPseudonym,
+        title: cleanTitle,
+        message: cleanMessage,
+        tag: cleanTag,
+        starts_at: nowISO,
+        expires_at: expiresISO,
+        is_active: 1
+      });
+    }
+
+    // Réplica en SQLite
+    try {
+      const sqliteExpires = expiresISO.replace('T', ' ').substring(0, 19);
+      const result = db.prepare(`
+        INSERT INTO promotions (admin_id, title, message, tag, starts_at, expires_at, is_active)
+        VALUES (?, ?, ?, ?, datetime('now', 'localtime'), datetime(?), 1)
+      `).run(typeof adminId === 'number' ? adminId : 1, cleanTitle, cleanMessage, cleanTag, sqliteExpires);
+
+      if (!createdPromo) {
+        createdPromo = db.prepare('SELECT * FROM promotions WHERE id = ?').get(Number(result.lastInsertRowid));
+      }
+    } catch (e) {}
 
     return res.status(201).json({
       success: true,
       message: `¡Promoción "${cleanTitle}" publicada exitosamente en el panel del cliente!`,
-      promotion: createdPromo
+      promotion: createdPromo || {
+        title: cleanTitle,
+        message: cleanMessage,
+        tag: cleanTag,
+        starts_at: nowISO,
+        expires_at: expiresISO
+      }
     });
 
   } catch (error) {
@@ -154,21 +226,21 @@ function createPromotion(req, res) {
 /**
  * Desactivar o eliminar promoción de inmediato (Admin/Cajero)
  */
-function deletePromotion(req, res) {
+async function deletePromotion(req, res) {
   try {
     const { id } = req.params;
 
-    const promo = db.prepare('SELECT id, title FROM promotions WHERE id = ?').get(id);
-    if (!promo) {
-      return res.status(404).json({ success: false, message: 'Promoción no encontrada.' });
+    if (firestore.isFirestoreConfigured()) {
+      await firestore.deletePromotion(id);
     }
 
-    // Marcar como inactiva
-    db.prepare('UPDATE promotions SET is_active = 0 WHERE id = ?').run(id);
+    try {
+      db.prepare('UPDATE promotions SET is_active = 0 WHERE id = ?').run(id);
+    } catch (e) {}
 
     return res.json({
       success: true,
-      message: `La promoción "${promo.title}" ha sido desactivada del panel de clientes.`
+      message: `La promoción ha sido desactivada del panel de clientes.`
     });
 
   } catch (error) {

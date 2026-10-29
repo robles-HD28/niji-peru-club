@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { db } = require('../db');
+const firestore = require('../firestore');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'niji_peru_secret_key_2026_super_secure';
 const JWT_EXPIRES_IN = '7d';
@@ -7,7 +8,7 @@ const JWT_EXPIRES_IN = '7d';
 /**
  * Middleware para autenticar token JWT
  */
-function authenticateToken(req, res, next) {
+async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
@@ -18,7 +19,7 @@ function authenticateToken(req, res, next) {
     });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) {
       return res.status(403).json({
         success: false,
@@ -26,11 +27,19 @@ function authenticateToken(req, res, next) {
       });
     }
 
-    // Consultar usuario actualizado en la base de datos
-    const user = db.prepare(`
-      SELECT id, pseudonym, email, birthdate, role, stamps, has_spun_wheel, welcome_prize
-      FROM users WHERE id = ?
-    `).get(decoded.id);
+    let user = null;
+
+    if (firestore.isFirestoreConfigured()) {
+      user = await firestore.getUserByPseudonym(decoded.pseudonym);
+    }
+
+    if (!user) {
+      // Fallback a SQLite local si no está en Firestore o no hay red
+      user = db.prepare(`
+        SELECT id, pseudonym, email, birthdate, role, stamps, has_spun_wheel, welcome_prize
+        FROM users WHERE pseudonym = ? COLLATE NOCASE OR id = ?
+      `).get(decoded.pseudonym || '', decoded.id || 0);
+    }
 
     if (!user) {
       return res.status(404).json({

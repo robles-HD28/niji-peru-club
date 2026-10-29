@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('node:path');
 const { initDatabase } = require('./db');
 const seed = require('./seed');
+const firestore = require('./firestore');
 const apiRoutes = require('./routes/api');
 
 const app = express();
@@ -11,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 // Inicializar y sembrar BD si es necesario
 initDatabase();
 seed();
+firestore.initFirestoreDatabase();
 
 // Middlewares
 app.use(cors());
