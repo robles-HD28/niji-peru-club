@@ -94,19 +94,19 @@ class RouletteWheel {
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Texto del premio
+      // Texto y Emoji del premio en cada sector
       ctx.save();
       ctx.translate(centerX, centerY);
       ctx.rotate(startAngle + sliceAngle / 2);
       ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = prize.text_color || '#ffffff';
 
-      const isEmojiOnly = prize.title === '🍍';
-      const fontSize = isEmojiOnly ? Math.max(16, Math.floor(this.radius * 0.16)) : Math.max(10, Math.floor(this.radius * 0.092));
-      ctx.font = `bold ${fontSize}px "Outfit", sans-serif`;
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      const fontSize = Math.max(11, Math.floor(this.radius * 0.086));
+      ctx.font = `900 ${fontSize}px "Outfit", "Segoe UI Emoji", -apple-system, sans-serif`;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
       ctx.shadowBlur = 4;
-      ctx.fillText(prize.title, this.radius - 12, isEmojiOnly ? 6 : 4);
+      ctx.fillText(prize.title, this.radius - 10, 0);
       ctx.restore();
 
       ctx.restore();

@@ -109,34 +109,31 @@ async function spinWheel(req, res) {
 
     if (selectedPrize.type === 'stamp' && selectedPrize.value > 0) {
       newStamps = Math.min(5, newStamps + selectedPrize.value);
-    } else if (selectedPrize.type === 'spin_again') {
-      hasSpun = 0; // Se le permite volver a girar la ruleta
-      prizeRecordTitle = null;
     } else if (selectedPrize.type === 'none') {
-      prizeRecordTitle = '🍍 (Sin premio)';
+      prizeRecordTitle = '🍍 Sin Premio';
     }
 
     // 5. Persistir resultado de forma atómica
     if (firestore.isFirestoreConfigured()) {
       await firestore.updateUser(user.pseudonym, {
-        has_spun_wheel: hasSpun,
+        has_spun_wheel: 1,
         welcome_prize: prizeRecordTitle,
         stamps: newStamps
       });
     } else {
       db.prepare(`
         UPDATE users
-        SET has_spun_wheel = ?,
+        SET has_spun_wheel = 1,
             welcome_prize = ?,
             stamps = ?,
             updated_at = datetime('now', 'localtime')
         WHERE pseudonym = ? COLLATE NOCASE OR id = ?
-      `).run(hasSpun, prizeRecordTitle, newStamps, user.pseudonym, user.id || 0);
+      `).run(prizeRecordTitle, newStamps, user.pseudonym, user.id || 0);
     }
 
     let customMessage = `¡Felicitaciones! Has ganado: ${selectedPrize.title}`;
-    if (selectedPrize.type === 'spin_again') {
-      customMessage = '¡Qué suerte! Tienes un segundo tiro libre. ¡Gira la ruleta otra vez!';
+    if (selectedPrize.type === 'stamp') {
+      customMessage = `¡Excelente! Has ganado: ${selectedPrize.title}. ¡Ya se acreditó en tu tarjeta!`;
     } else if (selectedPrize.type === 'none') {
       customMessage = '¡Uy, te tocó piña 🍍! No hay premio esta vez, pero tu tarjeta ya acumula sellos.';
     }
@@ -147,8 +144,8 @@ async function spinWheel(req, res) {
       prize: selectedPrize,
       prizeIndex: selectedIndex,
       updatedStamps: newStamps,
-      hasSpunWheel: hasSpun,
-      canSpinAgain: selectedPrize.type === 'spin_again'
+      hasSpunWheel: 1,
+      canSpinAgain: false
     });
 
   } catch (error) {

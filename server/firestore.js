@@ -220,17 +220,17 @@ async function getAllClients(query = '') {
 // ================= GESTIÓN DE PREMIOS DE RULETA =================
 
 const DEFAULT_PRIZES = [
-  { id: 'prize_1', title: 'Lapicero', description: '¡Te ganaste un lapicero oficial coleccionable de NIJI Perú!', type: 'gift', value: 0, color: '#ff4d5a', text_color: '#ffffff', weight: 2 },
-  { id: 'prize_2', title: 'Raspadilla', description: '¡Una deliciosa raspadilla artesanal refrescante gratis!', type: 'gift', value: 0, color: '#0d9488', text_color: '#ffffff', weight: 2 },
-  { id: 'prize_3', title: 'Un sello', description: '¡Se añade automáticamente 1 sello a tu tarjeta virtual!', type: 'stamp', value: 1, color: '#ff7e29', text_color: '#ffffff', weight: 2 },
-  { id: 'prize_4', title: '🍍', description: '¡Mala suerte esta vez! No hay premio, pero sigues acumulando sellos.', type: 'none', value: 0, color: '#f59e0b', text_color: '#ffffff', weight: 2 },
-  { id: 'prize_5', title: '🍍', description: '¡Mala suerte esta vez! No hay premio, pero sigues acumulando sellos.', type: 'none', value: 0, color: '#f43f5e', text_color: '#ffffff', weight: 2 },
-  { id: 'prize_6', title: 'Vuelve a girar', description: '¡Qué suerte! Tienes un segundo tiro gratis. ¡Gira otra vez!', type: 'spin_again', value: 0, color: '#8b5cf6', text_color: '#ffffff', weight: 2 }
+  { id: 'prize_1', title: '🍧 Raspadilla', description: '¡Una deliciosa raspadilla artesanal refrescante de regalo!', type: 'gift', value: 0, color: '#0d9488', text_color: '#ffffff', weight: 1 },
+  { id: 'prize_2', title: '⭐ +1 Sello', description: '¡Se añade automáticamente 1 sello a tu tarjeta virtual!', type: 'stamp', value: 1, color: '#ff7e29', text_color: '#ffffff', weight: 2 },
+  { id: 'prize_3', title: '✏️ Lapicero', description: '¡Te ganaste un lapicero oficial coleccionable de NIJI Perú!', type: 'gift', value: 0, color: '#ff4d5a', text_color: '#ffffff', weight: 2 },
+  { id: 'prize_4', title: '🍍 Sin Premio', description: '¡Mala suerte esta vez! No hay premio, pero sigues acumulando sellos.', type: 'none', value: 0, color: '#f59e0b', text_color: '#ffffff', weight: 1 },
+  { id: 'prize_5', title: '⭐ +1 Sello', description: '¡Se añade automáticamente 1 sello a tu tarjeta virtual!', type: 'stamp', value: 1, color: '#ff7e29', text_color: '#ffffff', weight: 2 },
+  { id: 'prize_6', title: '✏️ Lapicero', description: '¡Te ganaste un lapicero oficial coleccionable de NIJI Perú!', type: 'gift', value: 0, color: '#ff4d5a', text_color: '#ffffff', weight: 2 }
 ];
 
 async function getWheelPrizes() {
   const prizes = await queryCollection('wheel_prizes');
-  if (prizes.length === 0 || prizes.length !== 6 || prizes[0].title !== 'Lapicero') {
+  if (prizes.length === 0 || prizes.length !== 6 || prizes[0].title !== '🍧 Raspadilla' || prizes[3].title !== '🍍 Sin Premio') {
     for (const p of DEFAULT_PRIZES) {
       await setDoc('wheel_prizes', p.id, p);
     }
@@ -403,8 +403,8 @@ async function initFirestoreDatabase() {
     }
 
     const existingPrizes = await queryCollection('wheel_prizes');
-    if (existingPrizes.length !== 6 || existingPrizes[0].title !== 'Lapicero') {
-      console.log('🎁 Sincronizando 6 opciones oficiales de Ruleta en Firestore...');
+    if (existingPrizes.length !== 6 || existingPrizes[0].title !== '🍧 Raspadilla' || existingPrizes[3].title !== '🍍 Sin Premio') {
+      console.log('🎁 Sincronizando 6 opciones oficiales y simétricas de Ruleta en Firestore...');
       for (const p of DEFAULT_PRIZES) {
         await setDoc('wheel_prizes', p.id, p);
       }

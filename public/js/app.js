@@ -350,8 +350,8 @@ async function renderRouletteView(container) {
 
       <!-- Botón de Giro -->
       <div class="w-full space-y-2">
-        <button id="btn-spin-wheel" class="btn-primary w-full py-3.5 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-3 pulse-glow shadow-xl">
-          <span class="text-xl">🐾</span>
+        <button id="btn-spin-wheel" class="btn-primary w-full py-3.5 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-2.5 pulse-glow shadow-xl">
+          <span class="text-xl">✨</span>
           <span>¡GIRAR RULETA AHORA!</span>
           <span class="text-xl">✨</span>
         </button>
@@ -408,13 +408,10 @@ async function renderRouletteView(container) {
         const spinResult = await API.spinWheel();
 
         activeRoulette.spinTo(spinResult.prizeIndex, (awardedPrize) => {
-          const isSpinAgain = awardedPrize.type === 'spin_again';
           const isNone = awardedPrize.type === 'none';
           const isStamp = awardedPrize.type === 'stamp';
 
-          if (isSpinAgain) {
-            SoundEffects.playCoin();
-          } else if (isNone) {
+          if (isNone) {
             SoundEffects.playTick();
           } else {
             SoundEffects.playVictory();
@@ -435,38 +432,27 @@ async function renderRouletteView(container) {
           const stampBadge = document.getElementById('modal-stamp-badge');
           const actionBtn = document.getElementById('modal-action-btn');
 
-          if (isSpinAgain) {
-            statusPill.textContent = '🔄 ¡TIRO ADICIONAL!';
-            prizeTitle.textContent = '¡Vuelve a girar!';
-            prizeDesc.textContent = '¡Qué suerte! Has obtenido un segundo giro libre de bienvenida. ¡Gira la ruleta otra vez!';
-            stampBadge.classList.add('hidden');
-            actionBtn.textContent = '¡Girar de Nuevo! 🎯';
-            actionBtn.onclick = () => {
-              document.getElementById('prize-modal').classList.add('hidden');
-              spinBtn.disabled = false;
-              spinBtn.innerHTML = '<span class="text-xl">🐾</span> <span>¡GIRAR RULETA AHORA!</span> <span class="text-xl">✨</span>';
-            };
-          } else if (isNone) {
+          if (isNone) {
             statusPill.textContent = '🍍 RESULTADO';
             prizeTitle.textContent = '¡Te tocó Piña!';
-            prizeDesc.textContent = 'Mala suerte esta vez, no obtuviste premio en la ruleta. ¡Pero tu tarjeta ya está lista para acumular sellos por tus compras!';
+            prizeDesc.textContent = 'Mala suerte esta vez, no obtuviste premio en la ruleta. ¡Pero tu tarjeta ya está lista para acumular sellos por tus consumos!';
             stampBadge.classList.add('hidden');
             actionBtn.textContent = 'Ir a mi Tarjeta de Sellos →';
             actionBtn.onclick = () => navigateTo('#tarjeta');
           } else if (isStamp) {
             statusPill.textContent = '⭐ ¡PREMIO GANADO!';
-            prizeTitle.textContent = '¡Un Sello Extra!';
+            prizeTitle.textContent = awardedPrize.title;
             prizeDesc.textContent = awardedPrize.description || '¡Inicias tu tarjeta con 1 sello acumulado!';
             stampBadge.classList.remove('hidden');
-            stampBadge.textContent = '⭐ ¡Se añadió automáticamente 1 sello a tu tarjeta virtual!';
-            actionBtn.textContent = 'Ver mi Tarjeta de Sellos →';
+            stampBadge.textContent = '⭐ ¡Se acreditó automáticamente 1 sello en tu tarjeta!';
+            actionBtn.textContent = 'Ver mi Tarjeta con el Sello →';
             actionBtn.onclick = () => navigateTo('#tarjeta');
           } else {
             statusPill.textContent = '🎁 ¡PREMIO GANADO!';
             prizeTitle.textContent = awardedPrize.title;
             prizeDesc.textContent = awardedPrize.description;
             stampBadge.classList.remove('hidden');
-            stampBadge.textContent = `🎁 Presenta este premio en caja: ${awardedPrize.title}`;
+            stampBadge.textContent = `🎁 Reclama en caja: ${awardedPrize.title}`;
             actionBtn.textContent = 'Ver mi Tarjeta de Sellos →';
             actionBtn.onclick = () => navigateTo('#tarjeta');
           }
@@ -484,6 +470,47 @@ async function renderRouletteView(container) {
   } catch (err) {
     showToast('Error cargando los premios de la ruleta.', 'error');
   }
+}
+
+/* ==========================================================================
+   ICONOS SVG KAWAII REDONDEADOS Y AMIGABLES PARA SELLOS
+   (Corazón para sellos 1 a 4, Estrella redondeada para meta final 5)
+   ========================================================================== */
+function getKawaiiHeartIcon(isStamped, num = 1, isMini = false) {
+  const size = isMini ? 'w-5 h-5' : 'w-7 h-7';
+  if (isStamped) {
+    return `
+      <svg viewBox="0 0 32 32" class="${size} filter drop-shadow-sm select-none" fill="#ffffff" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M16 27.2c-.8 0-1.5-.4-2.1-1C9.2 21.6 4 17.2 4 11.8 4 7.5 7.4 4 11.6 4c2.4 0 4.2 1.1 5.4 2.5 1.2-1.4 3-2.5 5.4-2.5 4.2 0 7.6 3.5 7.6 7.8 0 5.4-5.2 9.8-9.9 14.4-.6.6-1.3 1-2.1 1z" />
+        <ellipse cx="11.5" cy="10" rx="1.8" ry="1.1" transform="rotate(-30 11.5 10)" fill="rgba(255,255,255,0.7)" />
+      </svg>
+    `;
+  }
+  return `
+    <div class="relative flex items-center justify-center select-none">
+      <svg viewBox="0 0 32 32" class="${size} opacity-40" fill="none" stroke="#94a3b8" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="3 3">
+        <path d="M16 27.2c-.8 0-1.5-.4-2.1-1C9.2 21.6 4 17.2 4 11.8 4 7.5 7.4 4 11.6 4c2.4 0 4.2 1.1 5.4 2.5 1.2-1.4 3-2.5 5.4-2.5 4.2 0 7.6 3.5 7.6 7.8 0 5.4-5.2 9.8-9.9 14.4-.6.6-1.3 1-2.1 1z" />
+      </svg>
+      <span class="absolute font-black ${isMini ? 'text-[9px]' : 'text-xs'} text-slate-400">${num}</span>
+    </div>
+  `;
+}
+
+function getKawaiiStarIcon(isStamped, isMini = false) {
+  const size = isMini ? 'w-5 h-5' : 'w-7 h-7';
+  if (isStamped) {
+    return `
+      <svg viewBox="0 0 32 32" class="${size} filter drop-shadow-md select-none" fill="#ffffff" stroke="#ffffff" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M16 3.8l2.9 6.2c.4.8 1.1 1.3 2 1.4l6.6.9c1.6.2 2.2 2.1 1 3.2l-5 4.6c-.6.6-.9 1.4-.7 2.3l1.3 6.5c.3 1.6-1.4 2.8-2.8 2l-5.8-3.3c-.8-.4-1.7-.4-2.5 0l-5.8 3.3c-1.4.8-3.1-.4-2.8-2l1.3-6.5c.2-.9-.1-1.7-.7-2.3l-5-4.6c-1.2-1.1-.6-3 1-3.2l6.6-.9c.9-.1 1.6-.6 2-1.4L16 3.8z" />
+        <circle cx="13" cy="12" r="1.4" fill="rgba(255,255,255,0.75)" />
+      </svg>
+    `;
+  }
+  return `
+    <svg viewBox="0 0 32 32" class="${size} select-none" fill="none" stroke="#f59e0b" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="3 2">
+      <path d="M16 3.8l2.9 6.2c.4.8 1.1 1.3 2 1.4l6.6.9c1.6.2 2.2 2.1 1 3.2l-5 4.6c-.6.6-.9 1.4-.7 2.3l1.3 6.5c.3 1.6-1.4 2.8-2.8 2l-5.8-3.3c-.8-.4-1.7-.4-2.5 0l-5.8 3.3c-1.4.8-3.1-.4-2.8-2l1.3-6.5c.2-.9-.1-1.7-.7-2.3l-5-4.6c-1.2-1.1-.6-3 1-3.2l6.6-.9c.9-.1 1.6-.6 2-1.4L16 3.8z" />
+    </svg>
+  `;
 }
 
 /* ==========================================================================
@@ -570,38 +597,32 @@ async function renderStampCardView(container) {
       `;
     }
 
-    // Casilleros de los 5 sellos
+    // Casilleros de los 5 sellos (Sellos 1-4: Corazón redondeado kawaii, Sello 5: Estrella redondeada)
     let stampSlotsHTML = '';
     for (let i = 1; i <= 5; i++) {
       const isStamped = i <= stamps;
       const isGoal = i === 5;
 
       if (isGoal) {
-        // El 5to sello (Meta Final): Obligatoriamente una estrella ⭐
+        // El 5to sello (Meta Final): Estrella redondeada amigable
         stampSlotsHTML += `
           <div class="flex flex-col items-center gap-1.5">
             <div class="stamp-slot slot-goal ${isStamped ? 'stamped' : 'empty'} relative">
-              ${isStamped 
-                ? `<span class="text-white text-2xl select-none drop-shadow-md">⭐</span>` 
-                : `<span class="text-amber-500 font-black text-2xl select-none opacity-85">⭐</span>`
-              }
+              ${getKawaiiStarIcon(isStamped, false)}
             </div>
-            <span class="text-[10px] font-black ${isStamped ? 'text-amber-600' : 'text-amber-700/80'} flex items-center gap-0.5">
+            <span class="text-[10px] font-black ${isStamped ? 'text-amber-600' : 'text-amber-700/80'} flex items-center gap-1">
               <span>⭐</span> Meta
             </span>
           </div>
         `;
       } else {
-        // Primeros 4 sellos regulares: Huellita de gatito 🐾
+        // Primeros 4 sellos regulares: Corazones redondeados y amigables
         stampSlotsHTML += `
           <div class="flex flex-col items-center gap-1.5">
             <div class="stamp-slot ${isStamped ? 'stamped' : 'empty'}">
-              ${isStamped 
-                ? `<span class="text-white text-2xl select-none drop-shadow">🐾</span>` 
-                : `<span class="text-slate-400 font-black text-sm select-none">${i}</span>`
-              }
+              ${getKawaiiHeartIcon(isStamped, i, false)}
             </div>
-            <span class="text-[10px] font-bold ${isStamped ? 'text-orange-600' : 'text-slate-400'}">
+            <span class="text-[10px] font-bold ${isStamped ? 'text-rose-600' : 'text-slate-400'}">
               Sello ${i}
             </span>
           </div>
@@ -1248,14 +1269,14 @@ async function renderClientDetailAdminView(container, clientId) {
       const isGoal = i === 5;
       if (isGoal) {
         clientStampSlots += `
-          <div class="stamp-slot slot-goal ${isStamped ? 'stamped' : 'empty'} w-10 h-10 text-sm">
-            ⭐
+          <div class="stamp-slot slot-goal ${isStamped ? 'stamped' : 'empty'} w-10 h-10 flex items-center justify-center">
+            ${getKawaiiStarIcon(isStamped, true)}
           </div>
         `;
       } else {
         clientStampSlots += `
-          <div class="stamp-slot ${isStamped ? 'stamped' : 'empty'} w-10 h-10 text-xs">
-            ${isStamped ? '🐾' : i}
+          <div class="stamp-slot ${isStamped ? 'stamped' : 'empty'} w-10 h-10 flex items-center justify-center">
+            ${getKawaiiHeartIcon(isStamped, i, true)}
           </div>
         `;
       }

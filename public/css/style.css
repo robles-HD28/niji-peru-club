@@ -184,8 +184,8 @@ h1, h2, h3, h4, .font-heading {
 
 .stamp-slot.stamped {
   border: 2px solid #ffffff;
-  background: linear-gradient(135deg, #ff6b00 0%, #ff8c38 100%);
-  box-shadow: 0 6px 16px rgba(255, 107, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+  background: linear-gradient(135deg, #ff4d5a 0%, #ff7e29 100%);
+  box-shadow: 0 6px 16px rgba(255, 77, 90, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.4);
   animation: stampHit 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
