@@ -6,38 +6,37 @@ function seed() {
 
   console.log('🔄 Inicializando base de datos oficial NIJI Perú...');
 
-  // Si ya existen administradores, no duplicar
+  // Si no existen administradores, crearlos
   const existingAdmins = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'").get().count;
-  if (existingAdmins >= 2) {
+  if (existingAdmins < 2) {
+    // Generar hashes de contraseñas seguros
+    const salt = bcrypt.genSaltSync(10);
+    const hashAdmin1 = bcrypt.hashSync('NijiPeru#2026Admin', salt);
+    const hashAdmin2 = bcrypt.hashSync('Niji#Caja2026!', salt);
+
+    const insertUser = db.prepare(`
+      INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize)
+      VALUES (?, ?, ?, ?, 'admin', 0, 1, 'Staff Oficial')
+    `);
+
+    // 1. Administrador General de Tienda
+    insertUser.run(
+      'admin_niji',
+      'admin@nijiperu.com',
+      '1990-01-01',
+      hashAdmin1
+    );
+
+    // 2. Cuenta de Caja / Personal de Tienda
+    insertUser.run(
+      'caja_tienda',
+      'caja@nijiperu.com',
+      '1995-05-15',
+      hashAdmin2
+    );
+  } else {
     console.log(`ℹ️ La base de datos ya contiene ${existingAdmins} administradores configurados.`);
-    return;
   }
-
-  // Generar hashes de contraseñas seguros
-  const salt = bcrypt.genSaltSync(10);
-  const hashAdmin1 = bcrypt.hashSync('NijiPeru#2026Admin', salt);
-  const hashAdmin2 = bcrypt.hashSync('Niji#Caja2026!', salt);
-
-  const insertUser = db.prepare(`
-    INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize)
-    VALUES (?, ?, ?, ?, 'admin', 0, 1, 'Staff Oficial')
-  `);
-
-  // 1. Administrador General de Tienda
-  insertUser.run(
-    'admin_niji',
-    'admin@nijiperu.com',
-    '1990-01-01',
-    hashAdmin1
-  );
-
-  // 2. Cuenta de Caja / Personal de Tienda
-  insertUser.run(
-    'caja_tienda',
-    'caja@nijiperu.com',
-    '1995-05-15',
-    hashAdmin2
-  );
 
   // Inicializar premios de la Ruleta Spin-to-Win oficial (exactamente 6 opciones)
   const currentPrizes = db.prepare('SELECT COUNT(*) as count FROM wheel_prizes').get().count;
