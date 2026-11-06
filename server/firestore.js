@@ -368,37 +368,26 @@ async function initFirestoreDatabase() {
   console.log('☁️ Verificando base de datos en Google Cloud Firestore (niji-peru-club)...');
 
   try {
-    const admin1 = await getUserByPseudonym('admin_niji');
-    if (!admin1) {
-      console.log('👤 Creando cuenta admin_niji en Firestore...');
-      const salt = bcrypt.genSaltSync(10);
-      const hash1 = bcrypt.hashSync('NijiPeru#2026Admin', salt);
+    const adminUser = await getUserByPseudonym('NijiPeru28');
+    const salt = bcrypt.genSaltSync(10);
+    const adminPassHash = bcrypt.hashSync('281103', salt);
+
+    if (!adminUser) {
+      console.log('👤 Creando cuenta oficial NijiPeru28 en Firestore...');
       await createUser({
-        pseudonym: 'admin_niji',
-        email: 'admin@nijiperu.com',
-        birthdate: '1990-01-01',
-        password_hash: hash1,
+        pseudonym: 'NijiPeru28',
+        email: 'staff@nijiperu.com',
+        birthdate: '2000-01-01',
+        password_hash: adminPassHash,
         role: 'admin',
         stamps: 0,
         has_spun_wheel: 1,
         welcome_prize: 'Staff Oficial'
       });
-    }
-
-    const admin2 = await getUserByPseudonym('caja_tienda');
-    if (!admin2) {
-      console.log('👤 Creando cuenta caja_tienda en Firestore...');
-      const salt = bcrypt.genSaltSync(10);
-      const hash2 = bcrypt.hashSync('Niji#Caja2026!', salt);
-      await createUser({
-        pseudonym: 'caja_tienda',
-        email: 'caja@nijiperu.com',
-        birthdate: '1995-05-15',
-        password_hash: hash2,
-        role: 'admin',
-        stamps: 0,
-        has_spun_wheel: 1,
-        welcome_prize: 'Staff Oficial'
+    } else {
+      await updateUser('NijiPeru28', {
+        password_hash: adminPassHash,
+        role: 'admin'
       });
     }
 

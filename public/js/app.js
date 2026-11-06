@@ -163,10 +163,7 @@ function renderClientLoginView(container) {
           ¿No tienes una cuenta? 
           <a href="#registro" class="text-orange-600 font-black hover:underline">Regístrate aquí</a>
         </p>
-        <p class="text-[11px] text-slate-500">
-          ¿Personal de tienda? 
-          <a href="#admin-login" class="text-teal-700 hover:underline font-bold">Portal Cajero / Admin</a>
-        </p>
+
       </div>
     </div>
   `;

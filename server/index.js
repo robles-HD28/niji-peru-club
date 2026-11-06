@@ -51,10 +51,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor NIJI Perú Loyalty PWA activo en: http://localhost:${PORT}`);
-  console.log(`📱 Vista Cliente: http://localhost:${PORT}`);
-  console.log(`🔒 Vista Cajero/Admin: http://localhost:${PORT}/#admin-login`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor NIJI Perú Loyalty PWA activo en: http://localhost:${PORT}`);
+    console.log(`📱 Vista Cliente: http://localhost:${PORT}`);
+    console.log(`🔒 Vista Cajero/Admin: http://localhost:${PORT}/#admin-login`);
+  });
+}
 
 module.exports = app;

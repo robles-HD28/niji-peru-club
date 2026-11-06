@@ -8,27 +8,32 @@ const RAW_SECRET = process.env.JWT_SECRET || (process.env.FIREBASE_API_KEY ? `ni
 const JWT_SECRET = crypto.createHash('sha256').update(RAW_SECRET).digest('hex');
 const JWT_EXPIRES_IN = '7d';
 
-// Limitador de intentos de inicio de sesión contra fuerza bruta (en memoria por IP)
+// Limitador estricto contra fuerza bruta por IP (adaptado a proxies de Vercel)
 const loginAttempts = new Map();
-const MAX_ATTEMPTS = 10;
-const WINDOW_MS = 10 * 60 * 1000; // 10 minutos
 
 function rateLimitLogin(req, res, next) {
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const rawIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown';
+  const clientIp = typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : 'unknown';
+
+  const isAdminRoute = req.originalUrl && req.originalUrl.includes('admin-login');
+  const maxAttempts = isAdminRoute ? 5 : 10;
+  const windowMs = 15 * 60 * 1000;
+
   const now = Date.now();
-  const record = loginAttempts.get(ip);
+  const key = isAdminRoute ? `admin_${clientIp}` : `user_${clientIp}`;
+  const record = loginAttempts.get(key);
 
   if (record && now < record.resetAt) {
-    if (record.count >= MAX_ATTEMPTS) {
+    if (record.count >= maxAttempts) {
       const waitMins = Math.ceil((record.resetAt - now) / 60000);
       return res.status(429).json({
         success: false,
-        message: `Demasiados intentos de inicio de sesión. Por seguridad, espera ${waitMins} min.`
+        message: `Acceso temporalmente bloqueado por demasiados intentos erróneos. Espera ${waitMins} min.`
       });
     }
     record.count += 1;
   } else {
-    loginAttempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    loginAttempts.set(key, { count: 1, resetAt: now + windowMs });
   }
   next();
 }
