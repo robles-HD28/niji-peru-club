@@ -9,22 +9,24 @@ const apiRoutes = require('./routes/api');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Inicializar y sembrar BD si es necesario
-initDatabase();
-seed();
-firestore.initFirestoreDatabase();
+// Inicializar y sembrar BD si es necesario de forma no bloqueante
+try {
+  initDatabase();
+  seed();
+} catch (e) {
+  console.warn('Init SQLite advertencia:', e.message);
+}
+
+try {
+  firestore.initFirestoreDatabase();
+} catch (e) {
+  console.warn('Init Firestore advertencia:', e.message);
+}
 
 // Middlewares
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Archivos estáticos de la PWA con headers para evitar caché obsoleto
-app.use(express.static(path.join(__dirname, '..', 'public'), {
-  setHeaders: (res, path) => {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  }
-}));
 
 // Desactivar caché HTTP en rutas API para garantizar datos en tiempo real
 app.use('/api', (req, res, next) => {
@@ -37,17 +39,24 @@ app.use('/api', (req, res, next) => {
 // Rutas de API REST
 app.use('/api', apiRoutes);
 
+// Archivos estáticos de la PWA
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  setHeaders: (res, path) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
+}));
+
 // Redirigir cualquier otra ruta al index.html para soportar navegación SPA / PWA
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// Manejador global de errores
+// Manejador global de errores (siempre responde JSON para evitar errores en fetch frontend)
 app.use((err, req, res, next) => {
   console.error('⚠️ Error no controlado en servidor:', err);
   res.status(500).json({
     success: false,
-    message: 'Ocurrió un error inesperado en el servidor NIJI Perú.'
+    message: err.message || 'Ocurrió un error inesperado en el servidor NIJI Perú.'
   });
 });
 

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "PWA de fidelización de clientes para NIJI Perú con roles Cliente y Administrador",
   "main": "server/index.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "start": "node server/index.js",
     "seed": "node server/seed.js"

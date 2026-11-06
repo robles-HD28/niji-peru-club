@@ -51,7 +51,15 @@ const API = (() => {
         headers
       });
 
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      let data;
+
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { success: false, message: text || 'Error en la respuesta del servidor.' };
+      }
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {

@@ -370,7 +370,7 @@ async function initFirestoreDatabase() {
   try {
     const adminUser = await getUserByPseudonym('NijiPeru28');
     const salt = bcrypt.genSaltSync(10);
-    const adminPassHash = bcrypt.hashSync('281103', salt);
+    const adminPassHash = bcrypt.hashSync('Niji#2811Peru', salt);
 
     if (!adminUser) {
       console.log('👤 Creando cuenta oficial NijiPeru28 en Firestore...');
