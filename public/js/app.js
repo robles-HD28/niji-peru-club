@@ -110,22 +110,18 @@ function setViewportMode(isLanding) {
   const frameBtn = document.getElementById('toggle-frame-btn');
   const appView = document.getElementById('app-view');
 
+  // Adaptación fluida real a cualquier pantalla (móvil, tablet o PC) sin marco artificial
+  document.body.classList.remove('mobile-frame-active');
+  if (mainViewport) {
+    mainViewport.className = 'landing-viewport';
+  }
+  if (frameBtn) frameBtn.classList.add('hidden');
+  if (subheader) subheader.classList.add('hidden');
+
   if (isLanding) {
-    document.body.classList.remove('mobile-frame-active');
-    if (mainViewport) {
-      mainViewport.className = 'landing-viewport';
-    }
-    if (subheader) subheader.classList.add('hidden');
-    if (frameBtn) frameBtn.classList.add('hidden');
     if (appView) appView.className = 'flex-1 flex flex-col';
   } else {
-    document.body.classList.add('mobile-frame-active');
-    if (mainViewport) {
-      mainViewport.className = 'phone-viewport bg-white border-slate-200 shadow-xl overflow-y-auto';
-    }
-    if (subheader) subheader.classList.remove('hidden');
-    if (frameBtn) frameBtn.classList.remove('hidden');
-    if (appView) appView.className = 'p-4 flex-1 flex flex-col justify-center';
+    if (appView) appView.className = 'p-3 sm:p-6 flex-1 flex flex-col justify-start';
   }
 }
 
@@ -210,6 +206,8 @@ function compressImageFile(file, maxSize = 640, quality = 0.78) {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', quality));
       };
@@ -547,7 +545,7 @@ function filterLandingCategory(category) {
    ========================================================================== */
 function renderClientLoginView(container) {
   container.innerHTML = `
-    <div class="space-y-5 max-w-sm mx-auto w-full my-auto py-2">
+    <div class="space-y-5 max-w-md mx-auto w-full my-auto py-4">
       <div class="text-center space-y-1">
         <div class="flex justify-center mb-1">
           <img src="/img/niji-logo.png" alt="Mascota NIJI" class="w-28 h-28 object-contain logo-sticker drop-shadow-md" />
@@ -619,7 +617,7 @@ function renderClientLoginView(container) {
    ========================================================================== */
 function renderRegisterView(container) {
   container.innerHTML = `
-    <div class="space-y-4 max-w-sm mx-auto w-full py-2">
+    <div class="space-y-4 max-w-md mx-auto w-full py-2">
       <div class="text-center space-y-1">
         <div class="flex justify-center mb-0.5">
           <img src="/img/niji-logo.png" alt="Mascota NIJI" class="w-20 h-20 object-contain logo-sticker drop-shadow-sm" />
@@ -741,7 +739,7 @@ async function renderRouletteView(container) {
   const user = API.getCurrentUser();
 
   container.innerHTML = `
-    <div class="flex flex-col items-center justify-between text-center max-w-sm mx-auto w-full py-2 space-y-3">
+    <div class="flex flex-col items-center justify-between text-center max-w-md mx-auto w-full py-2 space-y-3">
       <div class="space-y-1">
         <span class="text-[11px] font-black uppercase tracking-widest text-orange-700 bg-orange-100 px-3 py-1 rounded-full border border-orange-200">
           🎁 Regalo de Bienvenida NIJI
@@ -1100,7 +1098,7 @@ async function renderStampCardView(container) {
     }
 
     container.innerHTML = `
-      <div class="space-y-4 max-w-sm mx-auto w-full py-2">
+      <div class="space-y-4 max-w-xl mx-auto w-full py-2">
         
         <!-- Saludo e Identidad -->
         <div class="flex items-center justify-between">
@@ -1213,7 +1211,7 @@ async function renderStampCardView(container) {
    ========================================================================== */
 function renderAdminLoginView(container) {
   container.innerHTML = `
-    <div class="space-y-5 max-w-sm mx-auto w-full my-auto py-3">
+    <div class="space-y-5 max-w-md mx-auto w-full my-auto py-4">
       <div class="text-center space-y-1">
         <div class="flex justify-center mb-1">
           <img src="/img/niji-logo.png" alt="Mascota NIJI" class="w-24 h-24 object-contain logo-sticker drop-shadow-md" />
@@ -1289,7 +1287,7 @@ async function renderAdminDashboardView(container) {
   }
 
   container.innerHTML = `
-    <div class="space-y-4 max-w-sm mx-auto w-full py-2">
+    <div class="space-y-4 max-w-4xl mx-auto w-full py-2">
       
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -1462,8 +1460,9 @@ async function renderAdminDashboardView(container) {
       </div>
 
       <!-- PESTAÑA 3: GESTIÓN DE PRODUCTOS COMESTIBLES -->
-      <div id="admin-section-products" class="hidden space-y-4">
-        <div class="glass-panel p-4 rounded-3xl space-y-3">
+      <div id="admin-section-products" class="hidden">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+          <div class="md:col-span-5 glass-panel p-4 rounded-3xl space-y-3">
           <div class="flex items-center justify-between pb-1 border-b border-slate-100">
             <span id="product-form-title" class="text-xs font-black text-slate-800 flex items-center gap-1.5">
               <span>🍨</span>
@@ -1527,14 +1526,15 @@ async function renderAdminDashboardView(container) {
           </form>
         </div>
 
-        <!-- Lista de Productos del Catálogo -->
-        <div class="glass-panel p-4 rounded-3xl space-y-2.5">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-black text-slate-800">Catálogo Actual</span>
-            <button onclick="loadAdminProducts()" class="text-[10px] text-orange-600 font-bold hover:underline">Refrescar</button>
-          </div>
-          <div id="admin-products-list" class="space-y-2 max-h-72 overflow-y-auto pr-1">
-            <div class="text-center py-4 text-xs text-slate-400">Cargando productos...</div>
+          <!-- Lista de Productos del Catálogo -->
+          <div class="md:col-span-7 glass-panel p-4 rounded-3xl space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black text-slate-800">Catálogo Actual (Edita fotos, precios y visibilidad)</span>
+              <button onclick="loadAdminProducts()" class="text-[10px] text-orange-600 font-bold hover:underline">Refrescar</button>
+            </div>
+            <div id="admin-products-list" class="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+              <div class="text-center py-4 text-xs text-slate-400">Cargando productos...</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1857,7 +1857,7 @@ async function renderClientDetailAdminView(container, clientId) {
     const activeCoupon = client.coupons.find(c => c.status === 'active');
 
     container.innerHTML = `
-      <div class="space-y-4 max-w-sm mx-auto w-full py-2">
+      <div class="space-y-4 max-w-2xl mx-auto w-full py-2">
         
         <div class="flex items-center justify-between">
           <button onclick="navigateTo('#admin-dashboard')" class="text-xs text-slate-500 hover:text-slate-800 font-bold flex items-center gap-1">

@@ -29,9 +29,9 @@ async function getLandingData(req, res) {
 
     if (firestore.isFirestoreConfigured()) {
       const [info, visibleProds, activePromos] = await Promise.all([
-        firestore.getStoreInfo(),
-        firestore.getVisibleProducts(),
-        firestore.getActivePromotions()
+        firestore.getStoreInfo(true),
+        firestore.getVisibleProducts(true),
+        firestore.getActivePromotions(true)
       ]);
 
       storeInfo = info;
