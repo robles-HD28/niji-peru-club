@@ -4,7 +4,7 @@
  */
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'niji-peru-club';
-const API_KEY = process.env.FIREBASE_API_KEY || '';
+const API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyD3d_MgCXa_kskzVMe88eGP0fpr0MNrpy8';
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
 // Caché en memoria de corta duración (TTL 8s) para optimizar búsquedas y proteger cuota de lecturas
@@ -374,53 +374,7 @@ const DEFAULT_STORE_INFO = {
   maps_url: 'https://maps.app.goo.gl/qbLnkaY5zTVMrvTG9?g_st=aw'
 };
 
-const DEFAULT_PRODUCTS = [
-  {
-    id: 'prod_1',
-    name: 'Cuchareable Choco-Lúcuma',
-    category: 'Cuchareables',
-    price: 14.00,
-    description: 'Bizcocho húmedo de chocolate belga, mousse suave de lúcuma peruana y topping crocante.',
-    image_url: '',
-    is_visible: 1
-  },
-  {
-    id: 'prod_2',
-    name: 'Cuchareable Tres Leches Berry',
-    category: 'Cuchareables',
-    price: 13.50,
-    description: 'Clásico tres leches cremoso acompañado de compota artesanal de frutos rojos.',
-    image_url: '',
-    is_visible: 1
-  },
-  {
-    id: 'prod_3',
-    name: 'Raspadilla Artesanal Clásica',
-    category: 'Raspadillas',
-    price: 8.00,
-    description: 'Hielo granizado súper fino con jarabes de fruta 100% natural: fresa, maracuyá o mango.',
-    image_url: '',
-    is_visible: 1
-  },
-  {
-    id: 'prod_4',
-    name: 'Raspadilla Especial NIJI Mix',
-    category: 'Raspadillas',
-    price: 11.00,
-    description: 'Doble sabor frutal con leche condensada, jalea dulce y trozos de fruta fresca.',
-    image_url: '',
-    is_visible: 1
-  },
-  {
-    id: 'prod_5',
-    name: 'Pack Mochis Kawaii (x3)',
-    category: 'Postres',
-    price: 12.00,
-    description: 'Suaves bocaditos japoneses rellenos de crema pastelera, matcha y fresa.',
-    image_url: '',
-    is_visible: 1
-  }
-];
+const DEFAULT_PRODUCTS = [];
 
 function inferProductCategory(name, existingCategory) {
   if (existingCategory && existingCategory.trim()) return existingCategory.trim();

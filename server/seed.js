@@ -56,25 +56,6 @@ function seed() {
       }
     }
 
-    // Inicializar productos iniciales en SQLite si está vacío
-    const prodCount = db.prepare('SELECT COUNT(*) as count FROM products').get()?.count || 0;
-    if (prodCount === 0) {
-      const insertProd = db.prepare(`
-        INSERT INTO products (name, category, price, description, image_url, is_visible)
-        VALUES (?, ?, ?, ?, ?, 1)
-      `);
-      const defaultProds = [
-        ['Cuchareable Choco-Lúcuma', 'Cuchareables', 14.00, 'Bizcocho húmedo de chocolate belga, mousse suave de lúcuma peruana y topping crocante.', ''],
-        ['Cuchareable Tres Leches Berry', 'Cuchareables', 13.50, 'Clásico tres leches cremoso acompañado de compota artesanal de frutos rojos.', ''],
-        ['Raspadilla Artesanal Clásica', 'Raspadillas', 8.00, 'Hielo granizado súper fino con jarabes de fruta 100% natural: fresa, maracuyá o mango.', ''],
-        ['Raspadilla Especial NIJI Mix', 'Raspadillas', 11.00, 'Doble sabor frutal con leche condensada, jalea dulce y trozos de fruta fresca.', ''],
-        ['Pack Mochis Kawaii (x3)', 'Postres', 12.00, 'Suaves bocaditos japoneses rellenos de crema pastelera, matcha y fresa.', '']
-      ];
-      for (const p of defaultProds) {
-        insertProd.run(...p);
-      }
-    }
-
     // Inicializar store_info en SQLite si no existe
     const infoExists = db.prepare("SELECT id FROM store_info WHERE id = 'main'").get();
     if (!infoExists) {
