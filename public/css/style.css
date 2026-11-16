@@ -118,11 +118,22 @@ h1, h2, h3, h4, .font-heading {
   color: #94a3b8;
 }
 
-/* Contenedor del Simulador Móvil */
+/* Contenedor Landing Page Full-Responsive */
+.landing-viewport {
+  width: 100%;
+  max-width: 1120px;
+  min-height: calc(100vh - 56px);
+  margin: 0 auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Contenedor del Simulador Móvil (para App de Fidelización y Admin) */
 .phone-viewport {
   width: 100%;
   max-width: 440px;
-  min-height: 100vh;
+  min-height: calc(100vh - 56px);
   margin: 0 auto;
   position: relative;
   display: flex;
@@ -133,9 +144,9 @@ h1, h2, h3, h4, .font-heading {
 
 @media (min-width: 768px) {
   body.mobile-frame-active .phone-viewport {
-    min-height: 844px;
-    height: 844px;
-    max-height: 92vh;
+    min-height: 820px;
+    height: 820px;
+    max-height: 90vh;
     margin: 20px auto;
     border-radius: 46px;
     border: 10px solid #1e293b;

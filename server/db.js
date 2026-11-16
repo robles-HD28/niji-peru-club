@@ -113,6 +113,38 @@ function initDatabase() {
       );
     `);
 
+    // 6. Tabla de Productos Comestibles (Landing Page)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'Cuchareables',
+        price REAL NOT NULL DEFAULT 0,
+        description TEXT DEFAULT '',
+        image_url TEXT DEFAULT '',
+        is_visible INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+      );
+    `);
+
+    // 7. Tabla de Información Básica de la Tienda
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS store_info (
+        id TEXT PRIMARY KEY,
+        store_name TEXT NOT NULL,
+        hero_title TEXT NOT NULL,
+        hero_subtitle TEXT NOT NULL,
+        hero_image_url TEXT DEFAULT '',
+        whatsapp_number TEXT NOT NULL,
+        whatsapp_message TEXT NOT NULL,
+        address TEXT NOT NULL,
+        schedule TEXT NOT NULL,
+        maps_query TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+      );
+    `);
+
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_users_pseudonym ON users(pseudonym);
       CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -120,6 +152,7 @@ function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);
       CREATE INDEX IF NOT EXISTS idx_stamps_history_user ON stamps_history(user_id);
       CREATE INDEX IF NOT EXISTS idx_promotions_active ON promotions(is_active, expires_at);
+      CREATE INDEX IF NOT EXISTS idx_products_visible ON products(is_visible);
     `);
   } catch (err) {
     console.warn('⚠️ Error inicializando SQLite local:', err.message);

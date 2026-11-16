@@ -359,6 +359,143 @@ async function deletePromotion(promoId) {
   return res;
 }
 
+// ================= GESTIÓN DE PRODUCTOS Y TIENDA (LANDING PAGE) =================
+
+const DEFAULT_STORE_INFO = {
+  store_name: 'NIJI Perú',
+  hero_title: '¡Endulza tu día con el auténtico sabor kawaii!',
+  hero_subtitle: 'Descubre nuestros cuchareables artesanales, raspadillas refrescantes y postres únicos preparados cada día para ti.',
+  hero_image_url: '/img/niji-logo.png',
+  whatsapp_number: '51999999999',
+  whatsapp_message: '¡Hola NIJI Perú! Quisiera hacer un pedido o consultar sobre sus productos.',
+  address: 'Av. Principal 123, Lima, Perú',
+  schedule: 'Lun - Dom: 12:00 PM - 9:00 PM',
+  maps_query: 'Lima, Peru'
+};
+
+const DEFAULT_PRODUCTS = [
+  {
+    id: 'prod_1',
+    name: 'Cuchareable Choco-Lúcuma',
+    category: 'Cuchareables',
+    price: 14.00,
+    description: 'Bizcocho húmedo de chocolate belga, mousse suave de lúcuma peruana y topping crocante.',
+    image_url: '',
+    is_visible: 1
+  },
+  {
+    id: 'prod_2',
+    name: 'Cuchareable Tres Leches Berry',
+    category: 'Cuchareables',
+    price: 13.50,
+    description: 'Clásico tres leches cremoso acompañado de compota artesanal de frutos rojos.',
+    image_url: '',
+    is_visible: 1
+  },
+  {
+    id: 'prod_3',
+    name: 'Raspadilla Artesanal Clásica',
+    category: 'Raspadillas',
+    price: 8.00,
+    description: 'Hielo granizado súper fino con jarabes de fruta 100% natural: fresa, maracuyá o mango.',
+    image_url: '',
+    is_visible: 1
+  },
+  {
+    id: 'prod_4',
+    name: 'Raspadilla Especial NIJI Mix',
+    category: 'Raspadillas',
+    price: 11.00,
+    description: 'Doble sabor frutal con leche condensada, jalea dulce y trozos de fruta fresca.',
+    image_url: '',
+    is_visible: 1
+  },
+  {
+    id: 'prod_5',
+    name: 'Pack Mochis Kawaii (x3)',
+    category: 'Postres',
+    price: 12.00,
+    description: 'Suaves bocaditos japoneses rellenos de crema pastelera, matcha y fresa.',
+    image_url: '',
+    is_visible: 1
+  }
+];
+
+async function getAllProducts(forceRefresh = false) {
+  const products = await queryCollection('landing_products', forceRefresh);
+  return products.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+}
+
+async function getVisibleProducts(forceRefresh = false) {
+  const all = await getAllProducts(forceRefresh);
+  return all.filter(p => p.is_visible === 1 || p.is_visible === true);
+}
+
+async function createProduct(productObj) {
+  const now = new Date().toISOString();
+  const res = await addDoc('landing_products', {
+    name: productObj.name,
+    category: productObj.category || 'Otros',
+    price: Number(productObj.price) || 0,
+    description: productObj.description || '',
+    image_url: productObj.image_url || '',
+    is_visible: productObj.is_visible !== undefined ? (productObj.is_visible ? 1 : 0) : 1,
+    created_at: now,
+    updated_at: now
+  });
+  invalidateCache('landing_products');
+  return res;
+}
+
+async function updateProduct(productId, updates) {
+  const all = await queryCollection('landing_products', true);
+  const existing = all.find(p => String(p.id) === String(productId));
+  if (!existing) return null;
+
+  const merged = {
+    ...existing,
+    ...updates,
+    updated_at: new Date().toISOString()
+  };
+  delete merged.id;
+  await setDoc('landing_products', existing.id, merged);
+  invalidateCache('landing_products');
+  return { id: existing.id, ...merged };
+}
+
+async function deleteProduct(productId) {
+  const res = await deleteDoc('landing_products', productId);
+  invalidateCache('landing_products');
+  return res;
+}
+
+async function getStoreInfo(forceRefresh = false) {
+  const docs = await queryCollection('landing_store_info', forceRefresh);
+  const main = docs.find(d => d.id === 'main');
+  if (!main) {
+    await setDoc('landing_store_info', 'main', {
+      ...DEFAULT_STORE_INFO,
+      updated_at: new Date().toISOString()
+    });
+    return { id: 'main', ...DEFAULT_STORE_INFO };
+  }
+  return main;
+}
+
+async function updateStoreInfo(updates) {
+  const current = await getStoreInfo(true);
+  const merged = {
+    ...DEFAULT_STORE_INFO,
+    ...current,
+    ...updates,
+    updated_at: new Date().toISOString()
+  };
+  delete merged.id;
+  await setDoc('landing_store_info', 'main', merged);
+  invalidateCache('landing_store_info');
+  return { id: 'main', ...merged };
+}
+
 // ================= INICIALIZACIÓN DE FIRESTORE =================
 
 const bcrypt = require('bcryptjs');
@@ -399,6 +536,21 @@ async function initFirestoreDatabase() {
       }
     }
 
+    // Inicializar productos iniciales solo si no existe ninguno en la colección landing_products
+    const existingProducts = await queryCollection('landing_products');
+    if (existingProducts.length === 0) {
+      console.log('🍨 Sembrando catálogo inicial de productos NIJI Perú en Firestore (landing_products)...');
+      const now = new Date().toISOString();
+      for (const prod of DEFAULT_PRODUCTS) {
+        const { id, ...prodData } = prod;
+        await setDoc('landing_products', id, { ...prodData, created_at: now, updated_at: now });
+      }
+      invalidateCache('landing_products');
+    }
+
+    // Asegurar documento de información básica de tienda
+    await getStoreInfo();
+
     console.log('✅ Google Cloud Firestore conectado y listo para persistir datos 24/7.');
 
   } catch (initErr) {
@@ -428,5 +580,14 @@ module.exports = {
   createPromotion,
   deactivatePromotion,
   deletePromotion,
+  getAllProducts,
+  getVisibleProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  getStoreInfo,
+  updateStoreInfo,
+  DEFAULT_STORE_INFO,
+  DEFAULT_PRODUCTS,
   initFirestoreDatabase
 };

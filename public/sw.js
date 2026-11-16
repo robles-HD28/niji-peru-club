@@ -1,4 +1,4 @@
-const CACHE_NAME = 'niji-club-v3.2';
+const CACHE_NAME = 'niji-club-v4.0';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

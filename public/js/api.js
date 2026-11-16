@@ -109,7 +109,16 @@ const API = (() => {
     getClientDetail: (id) => request(`/admin/clients/${id}`, { method: 'GET' }),
     addStamp: (payload) => request('/admin/stamps/add', { method: 'POST', body: JSON.stringify(payload) }),
     resetClientCard: (payload) => request('/admin/stamps/reset', { method: 'POST', body: JSON.stringify(payload) }),
-    redeemCoupon: (payload) => request('/admin/coupons/redeem', { method: 'POST', body: JSON.stringify(payload) })
+    redeemCoupon: (payload) => request('/admin/coupons/redeem', { method: 'POST', body: JSON.stringify(payload) }),
+
+    // Landing Page & Gestión de Tienda / Productos
+    getLandingData: () => request('/store/landing', { method: 'GET' }),
+    getAdminProducts: () => request('/admin/products', { method: 'GET' }),
+    createProduct: (payload) => request('/admin/products', { method: 'POST', body: JSON.stringify(payload) }),
+    updateProduct: (id, payload) => request(`/admin/products/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    deleteProduct: (id) => request(`/admin/products/${id}`, { method: 'DELETE' }),
+    getAdminStoreInfo: () => request('/admin/store-info', { method: 'GET' }),
+    updateAdminStoreInfo: (payload) => request('/admin/store-info', { method: 'PUT', body: JSON.stringify(payload) })
   };
 })();
 

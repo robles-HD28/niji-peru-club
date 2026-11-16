@@ -32,7 +32,7 @@ function navigateTo(hash) {
   window.location.hash = hash;
 }
 
-function goToHome() {
+function openLoyaltyApp() {
   const user = API.getCurrentUser();
   if (!user) {
     navigateTo('#login');
@@ -45,23 +45,30 @@ function goToHome() {
   }
 }
 
+function goToHome() {
+  navigateTo('#inicio');
+}
+
 function logout() {
   API.setToken(null);
   API.setCurrentUser(null);
   updateNavbar();
   showToast('Has cerrado sesión correctamente.', 'info');
-  navigateTo('#login');
+  navigateTo('#inicio');
 }
 
 function updateNavbar() {
   const user = API.getCurrentUser();
-  const navQuick = document.getElementById('nav-quick-links');
   const navUser = document.getElementById('nav-user-info');
   const navUsername = document.getElementById('nav-username');
   const roleBadge = document.getElementById('role-badge');
+  const loyaltyBtn = document.getElementById('header-loyalty-btn');
+  const loyaltyIcon = document.getElementById('header-loyalty-icon');
+  const loyaltyText = document.getElementById('header-loyalty-text');
+
+  const isLanding = (!currentView || currentView === '#' || currentView === '#inicio');
 
   if (user) {
-    if (navQuick) navQuick.classList.add('hidden');
     if (navUser) navUser.classList.remove('hidden');
     if (navUsername) navUsername.textContent = `@${user.pseudonym}`;
 
@@ -75,18 +82,58 @@ function updateNavbar() {
       }
     }
   } else {
-    if (navQuick) navQuick.classList.remove('hidden');
     if (navUser) navUser.classList.add('hidden');
     if (roleBadge) {
       roleBadge.textContent = 'INVITADO';
       roleBadge.className = 'text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200';
     }
   }
+
+  if (loyaltyBtn && loyaltyIcon && loyaltyText) {
+    if (isLanding) {
+      loyaltyIcon.textContent = user ? (user.role === 'admin' ? '🛡️' : '⭐') : '🎁';
+      loyaltyText.textContent = user ? (user.role === 'admin' ? 'Panel Tienda' : 'Mi Tarjeta') : 'Club de Fidelización';
+      loyaltyBtn.onclick = openLoyaltyApp;
+      loyaltyBtn.className = 'bg-gradient-to-r from-[#ff4d5a] via-[#ff7e29] to-[#f59e0b] text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-sm hover:shadow-md hover:brightness-105 transition flex items-center gap-1.5 cursor-pointer';
+    } else {
+      loyaltyIcon.textContent = '🏠';
+      loyaltyText.textContent = 'Ver Menú / Tienda';
+      loyaltyBtn.onclick = () => navigateTo('#inicio');
+      loyaltyBtn.className = 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 px-3.5 py-1.5 rounded-full text-xs font-black transition flex items-center gap-1.5 cursor-pointer';
+    }
+  }
+}
+
+function setViewportMode(isLanding) {
+  const mainViewport = document.getElementById('main-viewport');
+  const subheader = document.getElementById('mobile-app-subheader');
+  const frameBtn = document.getElementById('toggle-frame-btn');
+  const appView = document.getElementById('app-view');
+
+  if (isLanding) {
+    document.body.classList.remove('mobile-frame-active');
+    if (mainViewport) {
+      mainViewport.className = 'landing-viewport';
+    }
+    if (subheader) subheader.classList.add('hidden');
+    if (frameBtn) frameBtn.classList.add('hidden');
+    if (appView) appView.className = 'flex-1 flex flex-col';
+  } else {
+    document.body.classList.add('mobile-frame-active');
+    if (mainViewport) {
+      mainViewport.className = 'phone-viewport bg-white border-slate-200 shadow-xl overflow-y-auto';
+    }
+    if (subheader) subheader.classList.remove('hidden');
+    if (frameBtn) frameBtn.classList.remove('hidden');
+    if (appView) appView.className = 'p-4 flex-1 flex flex-col justify-center';
+  }
 }
 
 async function handleRoute() {
-  const hash = window.location.hash || '#login';
+  const hash = window.location.hash || '#inicio';
   currentView = hash;
+  const isLanding = (hash === '#inicio' || hash === '#' || hash === '');
+  setViewportMode(isLanding);
   updateNavbar();
 
   const user = API.getCurrentUser();
@@ -104,7 +151,9 @@ async function handleRoute() {
     return;
   }
 
-  if (hash === '#login') {
+  if (isLanding) {
+    await renderLandingPageView(appView);
+  } else if (hash === '#login') {
     renderClientLoginView(appView);
   } else if (hash === '#registro') {
     renderRegisterView(appView);
@@ -120,8 +169,370 @@ async function handleRoute() {
     const clientId = hash.split('/')[1];
     await renderClientDetailAdminView(appView, clientId);
   } else {
-    renderClientLoginView(appView);
+    await renderLandingPageView(appView);
   }
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getCategoryEmoji(category) {
+  const c = (category || '').toLowerCase();
+  if (c.includes('cuchare')) return '🍨';
+  if (c.includes('raspa')) return '🍧';
+  if (c.includes('postre') || c.includes('mochi')) return '🍡';
+  if (c.includes('bebida') || c.includes('jugo')) return '🧋';
+  return '🍬';
+}
+
+function compressImageFile(file, maxSize = 640, quality = 0.78) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > height && width > maxSize) {
+          height = Math.round((height * maxSize) / width);
+          width = maxSize;
+        } else if (height > maxSize) {
+          width = Math.round((width * maxSize) / height);
+          height = maxSize;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error('No se pudo procesar la imagen seleccionada.'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Error leyendo el archivo de imagen.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+let landingState = {
+  storeInfo: null,
+  products: [],
+  promotions: [],
+  selectedCategory: 'Todos'
+};
+
+/* ==========================================================================
+   VISTA 0: LANDING PAGE COMERCIAL NIJI PERÚ (CATÁLOGO, PRECIOS, WSP Y MAPA)
+   ========================================================================== */
+async function renderLandingPageView(container) {
+  container.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-24 text-slate-400">
+      <div class="w-10 h-10 border-4 border-orange-400 border-t-transparent rounded-full animate-spin mb-3"></div>
+      <p class="text-xs font-bold">Cargando carta y promociones de NIJI Perú...</p>
+    </div>
+  `;
+
+  try {
+    const data = await API.getLandingData();
+    landingState.storeInfo = data.storeInfo || {};
+    landingState.products = data.products || [];
+    landingState.promotions = data.promotions || [];
+    landingState.selectedCategory = 'Todos';
+
+    const info = landingState.storeInfo;
+    const products = landingState.products;
+    const promos = landingState.promotions;
+
+    const cleanWa = String(info.whatsapp_number || '51999999999').replace(/\D/g, '');
+    const defaultWaMsg = encodeURIComponent(info.whatsapp_message || '¡Hola NIJI Perú! Quisiera hacer un pedido.');
+    const waBaseUrl = `https://wa.me/${cleanWa}?text=${defaultWaMsg}`;
+    const mapsQuery = encodeURIComponent(info.maps_query || info.address || 'Lima, Peru');
+    const mapsEmbedUrl = `https://maps.google.com/maps?q=${mapsQuery}&t=&z=16&ie=UTF8&iwloc=&output=embed`;
+    const mapsExternalUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+
+    // Obtener categorías únicas
+    const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category || 'Otros')))];
+
+    const promosSectionHTML = promos.length > 0 ? `
+      <section class="px-4 sm:px-6 py-4">
+        <div class="bg-gradient-to-r from-orange-50 via-rose-50 to-amber-50 border border-orange-200/80 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">📢</span>
+              <div>
+                <h2 class="text-lg sm:text-xl font-black text-slate-900">Promociones Vigentes</h2>
+                <p class="text-xs text-slate-500 font-medium">¡Aprovecha estas ofertas por tiempo limitado en tienda!</p>
+              </div>
+            </div>
+            <span class="text-xs font-black text-orange-700 bg-white px-3 py-1 rounded-full border border-orange-200 shadow-2xs">
+              ${promos.length} activa${promos.length > 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            ${promos.map(p => `
+              <div class="bg-white/95 p-4 rounded-2xl border border-orange-100 shadow-2xs space-y-1.5">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${p.tag === 'FLASH' ? 'bg-rose-500 text-white' : 'bg-orange-500 text-white'}">
+                    ${escapeHtml(p.tag || 'PROMO')}
+                  </span>
+                  <span class="text-[11px] font-bold text-orange-700 bg-orange-50 px-2.5 py-0.5 rounded-full border border-orange-200">
+                    ${escapeHtml(p.timeRemainingText)}
+                  </span>
+                </div>
+                <h3 class="text-sm sm:text-base font-black text-slate-900">${escapeHtml(p.title)}</h3>
+                <p class="text-xs text-slate-600 font-medium leading-relaxed">${escapeHtml(p.message)}</p>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </section>
+    ` : '';
+
+    container.innerHTML = `
+      <div class="space-y-8 pb-20">
+
+        <!-- 1. HERO SECTION -->
+        <section class="px-4 sm:px-6 pt-6 sm:pt-8">
+          <div class="bg-gradient-to-br from-orange-50 via-white to-teal-50 border border-orange-200/70 rounded-3xl p-6 sm:p-10 shadow-sm grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+            <div class="md:col-span-7 space-y-4 text-center md:text-left">
+              <span class="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-orange-700 bg-orange-100 px-3 py-1 rounded-full border border-orange-200">
+                <span>🍧</span>
+                <span>Cuchareables, Raspadillas &amp; Más</span>
+              </span>
+
+              <h1 class="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 leading-tight tracking-tight">
+                ${escapeHtml(info.hero_title || '¡Endulza tu día con el auténtico sabor kawaii!')}
+              </h1>
+
+              <p class="text-sm sm:text-base text-slate-600 font-medium leading-relaxed max-w-xl mx-auto md:mx-0">
+                ${escapeHtml(info.hero_subtitle || 'Descubre nuestros cuchareables artesanales, raspadillas refrescantes y postres únicos.')}
+              </p>
+
+              <div class="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
+                <button onclick="document.getElementById('menu-catalogo')?.scrollIntoView({ behavior: 'smooth' })" class="btn-primary px-6 py-3 rounded-2xl text-sm font-black flex items-center gap-2 cursor-pointer">
+                  <span>🍨</span>
+                  <span>Ver Carta y Precios</span>
+                </button>
+
+                <a href="${waBaseUrl}" target="_blank" rel="noopener noreferrer" class="bg-[#25D366] hover:bg-[#1ebe5d] text-white px-6 py-3 rounded-2xl text-sm font-black shadow-md hover:shadow-lg transition flex items-center gap-2">
+                  <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12.031 2c-5.516 0-9.969 4.453-9.969 9.969 0 1.766.469 3.484 1.344 5l-1.406 5.156 5.281-1.375c1.469.797 3.109 1.219 4.75 1.219 5.516 0 9.969-4.453 9.969-9.969S17.547 2 12.031 2zm5.813 14.125c-.25.703-1.438 1.344-2 1.422-.516.078-1.188.109-1.922-.125-.453-.141-1.031-.344-1.766-.656-3.094-1.328-5.109-4.469-5.266-4.672-.156-.203-1.266-1.688-1.266-3.219s.797-2.281 1.078-2.594c.281-.313.609-.391.813-.391s.406 0 .578.016c.188.016.438-.078.688.516.25.609.859 2.094.938 2.25s.125.344.016.547c-.109.203-.156.328-.313.516-.156.188-.328.422-.469.563-.156.156-.313.328-.141.641.172.313.781 1.281 1.672 2.078 1.156 1.031 2.125 1.344 2.438 1.5s.484.125.672-.078c.188-.203.781-.906.984-1.219s.422-.266.703-.156c.281.109 1.797.844 2.109 1s.516.234.594.359c.078.125.078.734-.172 1.438z"/></svg>
+                  <span>Pedir por WhatsApp</span>
+                </a>
+              </div>
+            </div>
+
+            <div class="md:col-span-5 flex justify-center">
+              <div class="relative w-56 h-56 sm:w-64 sm:h-64 rounded-3xl bg-white border-4 border-orange-200 shadow-xl p-3 flex items-center justify-center overflow-hidden">
+                <img src="${escapeHtml(info.hero_image_url || '/img/niji-logo.png')}" alt="${escapeHtml(info.store_name || 'NIJI Perú')}" class="w-full h-full object-contain rounded-2xl logo-sticker" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. PROMOCIONES ACTIVAS -->
+        ${promosSectionHTML}
+
+        <!-- 3. CATÁLOGO DE PRODUCTOS COMESTIBLES -->
+        <section id="menu-catalogo" class="px-4 sm:px-6 space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+            <div>
+              <span class="text-xs font-black uppercase tracking-wider text-teal-700 bg-teal-100 px-2.5 py-0.5 rounded-full border border-teal-200">
+                Nuestra Carta
+              </span>
+              <h2 class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">Productos Comestibles</h2>
+              <p class="text-xs sm:text-sm text-slate-500 font-medium">Elige tus favoritos y haz tu pedido directo por WhatsApp.</p>
+            </div>
+
+            <!-- Filtros de Categoría -->
+            <div id="landing-category-filters" class="flex items-center gap-2 overflow-x-auto pb-1">
+              ${categories.map(cat => `
+                <button onclick="filterLandingCategory('${escapeHtml(cat)}')" data-cat="${escapeHtml(cat)}" class="landing-cat-btn px-3.5 py-1.5 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer ${cat === 'Todos' ? 'bg-orange-500 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:border-orange-300'}">
+                  ${cat === 'Todos' ? '✨ Todos' : `${getCategoryEmoji(cat)} ${escapeHtml(cat)}`}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div id="landing-products-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            ${renderLandingProductCards(products, cleanWa)}
+          </div>
+        </section>
+
+        <!-- 4. INVITACIÓN OPCIONAL AL CLUB DE FIDELIZACIÓN -->
+        <section class="px-4 sm:px-6">
+          <div class="bg-gradient-to-r from-amber-50 via-orange-50 to-rose-50 border border-amber-200 rounded-3xl p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-5 shadow-xs">
+            <div class="flex items-center gap-4 text-center md:text-left flex-col sm:flex-row">
+              <div class="w-14 h-14 rounded-2xl bg-white border border-orange-200 shadow-xs flex items-center justify-center text-3xl shrink-0">
+                🎁
+              </div>
+              <div>
+                <h3 class="text-lg sm:text-xl font-black text-slate-900">¿Ya eres parte del Club de Fidelización NIJI?</h3>
+                <p class="text-xs sm:text-sm text-slate-600 font-medium mt-0.5">
+                  Regístrate gratis para girar la ruleta de bienvenida y acumular <strong>1 sello por cada S/ 5</strong> de consumo. ¡5 sellos = premio gratis!
+                </p>
+              </div>
+            </div>
+            <button onclick="openLoyaltyApp()" class="btn-primary px-6 py-3 rounded-2xl text-sm font-black whitespace-nowrap shrink-0 cursor-pointer">
+              ⭐ Ir al Club de Fidelización
+            </button>
+          </div>
+        </section>
+
+        <!-- 5. UBICACIÓN, MAPA Y CONTACTO -->
+        <section id="ubicacion-contacto" class="px-4 sm:px-6">
+          <div class="glass-panel rounded-3xl p-6 sm:p-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+            <div class="md:col-span-5 flex flex-col justify-between space-y-5">
+              <div class="space-y-4">
+                <div>
+                  <span class="text-xs font-black uppercase tracking-wider text-orange-700 bg-orange-100 px-2.5 py-0.5 rounded-full border border-orange-200">
+                    Encuéntranos
+                  </span>
+                  <h2 class="text-2xl font-black text-slate-900 mt-1.5">Visítanos o Contáctanos</h2>
+                </div>
+
+                <div class="space-y-3 text-sm">
+                  <div class="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span class="text-xl">📍</span>
+                    <div>
+                      <span class="text-[11px] font-bold text-slate-400 uppercase block">Dirección</span>
+                      <span class="font-bold text-slate-800">${escapeHtml(info.address || 'Lima, Perú')}</span>
+                    </div>
+                  </div>
+
+                  <div class="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span class="text-xl">🕒</span>
+                    <div>
+                      <span class="text-[11px] font-bold text-slate-400 uppercase block">Horario de Atención</span>
+                      <span class="font-bold text-slate-800">${escapeHtml(info.schedule || 'Lun - Dom: 12:00 PM - 9:00 PM')}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex flex-col sm:flex-row md:flex-col gap-2.5">
+                <a href="${waBaseUrl}" target="_blank" rel="noopener noreferrer" class="bg-[#25D366] hover:bg-[#1ebe5d] text-white py-3 px-4 rounded-2xl text-sm font-black text-center shadow-sm transition flex items-center justify-center gap-2">
+                  <span>💬</span>
+                  <span>Escríbenos por WhatsApp</span>
+                </a>
+                <a href="${mapsExternalUrl}" target="_blank" rel="noopener noreferrer" class="bg-slate-100 hover:bg-slate-200 text-slate-800 py-3 px-4 rounded-2xl text-xs font-black text-center transition flex items-center justify-center gap-2">
+                  <span>🗺️</span>
+                  <span>Abrir en Google Maps</span>
+                </a>
+              </div>
+            </div>
+
+            <div class="md:col-span-7 min-h-[280px] rounded-2xl overflow-hidden border border-slate-200 shadow-inner bg-slate-100">
+              <iframe
+                title="Mapa de Ubicación NIJI Perú"
+                src="${mapsEmbedUrl}"
+                class="w-full h-full min-h-[280px] border-0"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade">
+              </iframe>
+            </div>
+          </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="text-center text-xs text-slate-400 font-medium pt-2 pb-4">
+          © ${new Date().getFullYear()} ${escapeHtml(info.store_name || 'NIJI Perú')} — Todos los derechos reservados.
+        </footer>
+
+        <!-- Botón Flotante de WhatsApp -->
+        <a href="${waBaseUrl}" target="_blank" rel="noopener noreferrer" title="Contáctanos por WhatsApp" class="fixed bottom-5 right-5 z-40 bg-[#25D366] hover:bg-[#1ebe5d] text-white w-14 h-14 rounded-full shadow-xl hover:shadow-2xl hover:scale-105 transition flex items-center justify-center">
+          <svg class="w-7 h-7 fill-current" viewBox="0 0 24 24"><path d="M12.031 2c-5.516 0-9.969 4.453-9.969 9.969 0 1.766.469 3.484 1.344 5l-1.406 5.156 5.281-1.375c1.469.797 3.109 1.219 4.75 1.219 5.516 0 9.969-4.453 9.969-9.969S17.547 2 12.031 2zm5.813 14.125c-.25.703-1.438 1.344-2 1.422-.516.078-1.188.109-1.922-.125-.453-.141-1.031-.344-1.766-.656-3.094-1.328-5.109-4.469-5.266-4.672-.156-.203-1.266-1.688-1.266-3.219s.797-2.281 1.078-2.594c.281-.313.609-.391.813-.391s.406 0 .578.016c.188.016.438-.078.688.516.25.609.859 2.094.938 2.25s.125.344.016.547c-.109.203-.156.328-.313.516-.156.188-.328.422-.469.563-.156.156-.313.328-.141.641.172.313.781 1.281 1.672 2.078 1.156 1.031 2.125 1.344 2.438 1.5s.484.125.672-.078c.188-.203.781-.906.984-1.219s.422-.266.703-.156c.281.109 1.797.844 2.109 1s.516.234.594.359c.078.125.078.734-.172 1.438z"/></svg>
+        </a>
+
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `
+      <div class="text-center py-20 px-4 space-y-3">
+        <p class="text-sm text-rose-500 font-bold">${escapeHtml(err.message || 'No se pudo cargar la página.')}</p>
+        <button onclick="handleRoute()" class="btn-primary px-5 py-2.5 rounded-2xl text-xs font-black">Reintentar</button>
+      </div>
+    `;
+  }
+}
+
+function renderLandingProductCards(products, cleanWa) {
+  if (!products || products.length === 0) {
+    return `
+      <div class="col-span-full text-center py-12 bg-white rounded-3xl border border-dashed border-slate-200 text-slate-400 text-sm font-medium">
+        Pronto publicaremos nuevos productos deliciosos en esta categoría.
+      </div>
+    `;
+  }
+
+  return products.map(p => {
+    const priceFormatted = `S/ ${Number(p.price || 0).toFixed(2)}`;
+    const prodMsg = encodeURIComponent(`¡Hola NIJI Perú! Me gustaría pedir: ${p.name} (${priceFormatted}).`);
+    const waLink = `https://wa.me/${cleanWa}?text=${prodMsg}`;
+    const hasImg = Boolean(p.image_url && p.image_url.trim() !== '');
+
+    return `
+      <article class="glass-panel rounded-3xl overflow-hidden flex flex-col justify-between hover:shadow-lg hover:-translate-y-0.5 transition duration-200 border border-slate-100">
+        <div>
+          <div class="h-48 bg-gradient-to-br from-orange-50 via-rose-50 to-teal-50 relative overflow-hidden flex items-center justify-center">
+            ${hasImg ? `
+              <img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.name)}" class="w-full h-full object-cover" />
+            ` : `
+              <span class="text-6xl select-none">${getCategoryEmoji(p.category)}</span>
+            `}
+            <span class="absolute top-3 left-3 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/90 backdrop-blur text-slate-800 border border-slate-200/80 shadow-2xs">
+              ${escapeHtml(p.category || 'Especial')}
+            </span>
+            <span class="absolute bottom-3 right-3 text-sm font-black px-3 py-1 rounded-full bg-orange-500 text-white shadow-md">
+              ${priceFormatted}
+            </span>
+          </div>
+
+          <div class="p-4 space-y-1.5">
+            <h3 class="text-base font-black text-slate-900 leading-snug">${escapeHtml(p.name)}</h3>
+            <p class="text-xs text-slate-600 font-medium leading-relaxed line-clamp-3">
+              ${escapeHtml(p.description || 'Preparado artesanalmente con ingredientes seleccionados.')}
+            </p>
+          </div>
+        </div>
+
+        <div class="px-4 pb-4 pt-1">
+          <a href="${waLink}" target="_blank" rel="noopener noreferrer" class="w-full py-2.5 rounded-2xl bg-emerald-50 hover:bg-[#25D366] text-emerald-700 hover:text-white border border-emerald-200 hover:border-[#25D366] text-xs font-black transition flex items-center justify-center gap-1.5">
+            <span>💬</span>
+            <span>Pedir por WhatsApp</span>
+          </a>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function filterLandingCategory(category) {
+  landingState.selectedCategory = category;
+
+  document.querySelectorAll('.landing-cat-btn').forEach(btn => {
+    const isSelected = btn.getAttribute('data-cat') === category;
+    btn.className = isSelected
+      ? 'landing-cat-btn px-3.5 py-1.5 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer bg-orange-500 text-white shadow-xs'
+      : 'landing-cat-btn px-3.5 py-1.5 rounded-full text-xs font-bold transition whitespace-nowrap cursor-pointer bg-white text-slate-600 border border-slate-200 hover:border-orange-300';
+  });
+
+  const grid = document.getElementById('landing-products-grid');
+  if (!grid) return;
+
+  const cleanWa = String(landingState.storeInfo?.whatsapp_number || '51999999999').replace(/\D/g, '');
+  const filtered = category === 'Todos'
+    ? landingState.products
+    : landingState.products.filter(p => (p.category || 'Otros') === category);
+
+  grid.innerHTML = renderLandingProductCards(filtered, cleanWa);
 }
 
 /* ==========================================================================
@@ -908,15 +1319,23 @@ async function renderAdminDashboardView(container) {
         </div>
       </div>
 
-      <!-- SELECTOR DE PESTAÑAS (CLIENTES VS PROMOCIONES) -->
-      <div class="flex items-center gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
-        <button id="admin-tab-clients-btn" onclick="switchAdminTab('clients')" class="flex-1 py-2 rounded-xl text-xs font-black transition bg-white text-slate-900 shadow-xs flex items-center justify-center gap-1.5">
+      <!-- SELECTOR DE PESTAÑAS (CLIENTES, PROMOCIONES, PRODUCTOS, TIENDA) -->
+      <div class="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+        <button id="admin-tab-clients-btn" onclick="switchAdminTab('clients')" class="py-2 rounded-xl text-[11px] font-black transition bg-white text-slate-900 shadow-xs flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer">
           <span>👥</span>
-          <span>Clientes & Sellos</span>
+          <span>Clientes</span>
         </button>
-        <button id="admin-tab-promos-btn" onclick="switchAdminTab('promos')" class="flex-1 py-2 rounded-xl text-xs font-bold transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5">
+        <button id="admin-tab-promos-btn" onclick="switchAdminTab('promos')" class="py-2 rounded-xl text-[11px] font-bold transition text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer">
           <span>📢</span>
-          <span>Promociones</span>
+          <span>Promos</span>
+        </button>
+        <button id="admin-tab-products-btn" onclick="switchAdminTab('products')" class="py-2 rounded-xl text-[11px] font-bold transition text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer">
+          <span>🍨</span>
+          <span>Productos</span>
+        </button>
+        <button id="admin-tab-store-btn" onclick="switchAdminTab('store')" class="py-2 rounded-xl text-[11px] font-bold transition text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer">
+          <span>🏪</span>
+          <span>Tienda</span>
         </button>
       </div>
 
@@ -1033,6 +1452,151 @@ async function renderAdminDashboardView(container) {
           </div>
         </div>
 
+      </div>
+
+      <!-- PESTAÑA 3: GESTIÓN DE PRODUCTOS COMESTIBLES -->
+      <div id="admin-section-products" class="hidden space-y-4">
+        <div class="glass-panel p-4 rounded-3xl space-y-3">
+          <div class="flex items-center justify-between pb-1 border-b border-slate-100">
+            <span id="product-form-title" class="text-xs font-black text-slate-800 flex items-center gap-1.5">
+              <span>🍨</span>
+              <span>Agregar Nuevo Producto</span>
+            </span>
+            <button type="button" id="btn-cancel-edit-prod" onclick="resetProductForm()" class="hidden text-[10px] font-bold text-rose-600 hover:underline">
+              Cancelar edición
+            </button>
+          </div>
+
+          <form id="admin-product-form" class="space-y-2.5">
+            <input type="hidden" id="prod-edit-id" value="" />
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre del Producto</label>
+              <input type="text" id="prod-name" required placeholder="ej. Cuchareable Choco-Lúcuma" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Categoría</label>
+                <select id="prod-category" class="glass-input w-full px-2 py-2 rounded-xl text-xs font-bold text-slate-700">
+                  <option value="Cuchareables">🍨 Cuchareables</option>
+                  <option value="Raspadillas">🍧 Raspadillas</option>
+                  <option value="Postres">🍡 Postres</option>
+                  <option value="Bebidas">🧋 Bebidas</option>
+                  <option value="Otros">🍬 Otros</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Precio (S/)</label>
+                <input type="number" step="0.10" min="0" id="prod-price" required placeholder="12.00" class="glass-input w-full px-3 py-2 rounded-xl text-xs font-bold" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Descripción breve</label>
+              <textarea id="prod-description" rows="2" placeholder="Ingredientes, sabores, porción..." class="glass-input w-full px-3 py-2 rounded-xl text-xs"></textarea>
+            </div>
+
+            <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <label class="block text-[11px] font-bold text-slate-700">Imagen del Producto (Subir foto o pegar URL)</label>
+              <div class="flex items-center gap-2">
+                <input type="file" id="prod-image-file" accept="image/*" class="text-[10px] text-slate-600 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-orange-100 file:text-orange-700 hover:file:bg-orange-200 cursor-pointer w-full" />
+              </div>
+              <input type="text" id="prod-image-url" placeholder="O pega aquí una URL de imagen (https://...)" class="glass-input w-full px-3 py-1.5 rounded-xl text-[11px]" />
+              <div id="prod-image-preview-wrap" class="hidden flex items-center gap-2 pt-1">
+                <img id="prod-image-preview" src="" alt="Vista previa" class="w-12 h-12 rounded-xl object-cover border border-orange-200" />
+                <button type="button" onclick="clearProductImage()" class="text-[10px] text-rose-600 font-bold hover:underline">Quitar imagen</button>
+              </div>
+            </div>
+
+            <label class="flex items-center gap-2 cursor-pointer select-none pt-1">
+              <input type="checkbox" id="prod-visible" checked class="w-4 h-4 accent-orange-500 rounded" />
+              <span class="text-xs font-bold text-slate-700">Exhibir en la página principal</span>
+            </label>
+
+            <button type="submit" id="btn-submit-product" class="btn-primary w-full py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer">
+              <span>💾 Guardar Producto</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Lista de Productos del Catálogo -->
+        <div class="glass-panel p-4 rounded-3xl space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-black text-slate-800">Catálogo Actual</span>
+            <button onclick="loadAdminProducts()" class="text-[10px] text-orange-600 font-bold hover:underline">Refrescar</button>
+          </div>
+          <div id="admin-products-list" class="space-y-2 max-h-72 overflow-y-auto pr-1">
+            <div class="text-center py-4 text-xs text-slate-400">Cargando productos...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PESTAÑA 4: INFORMACIÓN BÁSICA DE TIENDA, WHATSAPP Y MAPA -->
+      <div id="admin-section-store" class="hidden space-y-4">
+        <div class="glass-panel p-4 rounded-3xl space-y-3">
+          <div class="flex items-center justify-between pb-1 border-b border-slate-100">
+            <span class="text-xs font-black text-slate-800 flex items-center gap-1.5">
+              <span>🏪</span>
+              <span>Información de la Página Principal</span>
+            </span>
+            <span class="text-[10px] text-teal-800 font-bold bg-teal-100 px-2 py-0.5 rounded-full">Landing Page</span>
+          </div>
+
+          <form id="admin-store-info-form" class="space-y-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre de la Tienda</label>
+              <input type="text" id="store-name" required class="glass-input w-full px-3 py-2 rounded-xl text-xs font-bold" />
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Título Principal (Hero)</label>
+              <input type="text" id="store-hero-title" required class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Subtítulo / Descripción</label>
+              <textarea id="store-hero-subtitle" rows="2" class="glass-input w-full px-3 py-2 rounded-xl text-xs"></textarea>
+            </div>
+
+            <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <label class="block text-[11px] font-bold text-slate-700">Imagen Principal / Banner (Subir foto o URL)</label>
+              <input type="file" id="store-hero-file" accept="image/*" class="text-[10px] text-slate-600 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-teal-100 file:text-teal-800 hover:file:bg-teal-200 cursor-pointer w-full" />
+              <input type="text" id="store-hero-image" placeholder="/img/niji-logo.png o https://..." class="glass-input w-full px-3 py-1.5 rounded-xl text-[11px]" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">WhatsApp (con 51)</label>
+                <input type="text" id="store-whatsapp" required placeholder="51999999999" class="glass-input w-full px-3 py-2 rounded-xl text-xs font-mono" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Horario de Atención</label>
+                <input type="text" id="store-schedule" placeholder="Lun-Dom 12pm-9pm" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Mensaje predeterminado de WhatsApp</label>
+              <input type="text" id="store-whatsapp-msg" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Dirección visible en la web</label>
+              <input type="text" id="store-address" required placeholder="Av. Larco 123, Miraflores, Lima" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Ubicación exacta para el Mapa (Dirección o Coordenadas)</label>
+              <input type="text" id="store-maps-query" placeholder="ej. -12.1219,-77.0297 o Av. Larco 123, Miraflores" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
+              <p class="text-[10px] text-slate-400 mt-0.5">El mapa interactivo de la web se actualizará automáticamente con este dato.</p>
+            </div>
+
+            <button type="submit" id="btn-submit-store-info" class="btn-teal w-full py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer">
+              <span>💾 Guardar Información de Tienda</span>
+            </button>
+          </form>
+        </div>
       </div>
 
     </div>
@@ -1456,28 +2020,40 @@ async function redeemClientCoupon(couponCode, clientId) {
    ========================================================================== */
 
 function switchAdminTab(tab) {
-  const clientsSection = document.getElementById('admin-section-clients');
-  const promosSection = document.getElementById('admin-section-promos');
-  const clientsBtn = document.getElementById('admin-tab-clients-btn');
-  const promosBtn = document.getElementById('admin-tab-promos-btn');
+  const sections = {
+    clients: document.getElementById('admin-section-clients'),
+    promos: document.getElementById('admin-section-promos'),
+    products: document.getElementById('admin-section-products'),
+    store: document.getElementById('admin-section-store')
+  };
 
-  if (!clientsSection || !promosSection) return;
+  const buttons = {
+    clients: document.getElementById('admin-tab-clients-btn'),
+    promos: document.getElementById('admin-tab-promos-btn'),
+    products: document.getElementById('admin-tab-products-btn'),
+    store: document.getElementById('admin-tab-store-btn')
+  };
 
-  if (tab === 'clients') {
-    clientsSection.classList.remove('hidden');
-    promosSection.classList.add('hidden');
+  Object.keys(sections).forEach(key => {
+    if (!sections[key] || !buttons[key]) return;
+    if (key === tab) {
+      sections[key].classList.remove('hidden');
+      buttons[key].className = 'py-2 rounded-xl text-[11px] font-black transition bg-white text-slate-900 shadow-xs flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer';
+    } else {
+      sections[key].classList.add('hidden');
+      buttons[key].className = 'py-2 rounded-xl text-[11px] font-bold transition text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1 cursor-pointer';
+    }
+  });
 
-    clientsBtn.className = 'flex-1 py-2 rounded-xl text-xs font-black transition bg-white text-slate-900 shadow-xs flex items-center justify-center gap-1.5';
-    promosBtn.className = 'flex-1 py-2 rounded-xl text-xs font-bold transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5';
-  } else {
-    clientsSection.classList.add('hidden');
-    promosSection.classList.remove('hidden');
-
-    promosBtn.className = 'flex-1 py-2 rounded-xl text-xs font-black transition bg-white text-slate-900 shadow-xs flex items-center justify-center gap-1.5';
-    clientsBtn.className = 'flex-1 py-2 rounded-xl text-xs font-bold transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5';
-
+  if (tab === 'promos') {
     loadAdminPromotions();
     setupCreatePromoForm();
+  } else if (tab === 'products') {
+    loadAdminProducts();
+    setupAdminProductForm();
+  } else if (tab === 'store') {
+    loadAdminStoreInfo();
+    setupAdminStoreInfoForm();
   }
 }
 
@@ -1617,7 +2193,299 @@ async function deleteAdminPromotion(id) {
   return deactivateAdminPromotion(id);
 }
 
+/* ==========================================================================
+   GESTIÓN DE PRODUCTOS Y TIENDA (CMS DEL PANEL ADMIN)
+   ========================================================================== */
+
+let adminProductsCache = [];
+
+function setupAdminProductForm() {
+  const form = document.getElementById('admin-product-form');
+  const fileInput = document.getElementById('prod-image-file');
+  const urlInput = document.getElementById('prod-image-url');
+
+  if (fileInput && !fileInput.dataset.listenerAttached) {
+    fileInput.dataset.listenerAttached = 'true';
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        showToast('Procesando imagen...', 'info', 2000);
+        const compressedDataUrl = await compressImageFile(file, 640, 0.78);
+        if (urlInput) urlInput.value = compressedDataUrl;
+        showProductImagePreview(compressedDataUrl);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
+  if (urlInput && !urlInput.dataset.listenerAttached) {
+    urlInput.dataset.listenerAttached = 'true';
+    urlInput.addEventListener('input', (e) => {
+      showProductImagePreview(e.target.value.trim());
+    });
+  }
+
+  if (!form || form.dataset.listenerAttached) return;
+  form.dataset.listenerAttached = 'true';
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-submit-product');
+    const editId = document.getElementById('prod-edit-id').value.trim();
+
+    const payload = {
+      name: document.getElementById('prod-name').value.trim(),
+      category: document.getElementById('prod-category').value,
+      price: Number(document.getElementById('prod-price').value),
+      description: document.getElementById('prod-description').value.trim(),
+      image_url: document.getElementById('prod-image-url').value.trim(),
+      is_visible: document.getElementById('prod-visible').checked ? 1 : 0
+    };
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span> <span>Guardando...</span>';
+
+    try {
+      let res;
+      if (editId) {
+        res = await API.updateProduct(editId, payload);
+      } else {
+        res = await API.createProduct(payload);
+      }
+      showToast(res.message, 'success');
+      resetProductForm();
+      await loadAdminProducts();
+    } catch (err) {
+      showToast(err.message || 'Error al guardar el producto.', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span>💾 Guardar Producto</span>';
+    }
+  });
+}
+
+function showProductImagePreview(src) {
+  const wrap = document.getElementById('prod-image-preview-wrap');
+  const img = document.getElementById('prod-image-preview');
+  if (!wrap || !img) return;
+  if (src) {
+    img.src = src;
+    wrap.classList.remove('hidden');
+  } else {
+    img.src = '';
+    wrap.classList.add('hidden');
+  }
+}
+
+function clearProductImage() {
+  const fileInput = document.getElementById('prod-image-file');
+  const urlInput = document.getElementById('prod-image-url');
+  if (fileInput) fileInput.value = '';
+  if (urlInput) urlInput.value = '';
+  showProductImagePreview('');
+}
+
+function resetProductForm() {
+  const form = document.getElementById('admin-product-form');
+  if (form) form.reset();
+  const editId = document.getElementById('prod-edit-id');
+  if (editId) editId.value = '';
+  const title = document.getElementById('product-form-title');
+  if (title) title.innerHTML = '<span>🍨</span> <span>Agregar Nuevo Producto</span>';
+  const cancelBtn = document.getElementById('btn-cancel-edit-prod');
+  if (cancelBtn) cancelBtn.classList.add('hidden');
+  const visibleCheck = document.getElementById('prod-visible');
+  if (visibleCheck) visibleCheck.checked = true;
+  clearProductImage();
+}
+
+async function loadAdminProducts() {
+  const container = document.getElementById('admin-products-list');
+  if (!container) return;
+
+  try {
+    const res = await API.getAdminProducts();
+    const products = res.products || [];
+    adminProductsCache = products;
+
+    if (products.length === 0) {
+      container.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 font-medium">Aún no hay productos en el catálogo.</div>';
+      return;
+    }
+
+    container.innerHTML = products.map(p => {
+      const safeId = String(p.id).replace(/'/g, "\\'");
+      const isVisible = p.is_visible === 1 || p.is_visible === true;
+      const hasImg = Boolean(p.image_url && p.image_url.trim() !== '');
+
+      return `
+        <div class="p-3 rounded-2xl border ${isVisible ? 'bg-slate-50 border-slate-200/80' : 'bg-slate-100/70 border-slate-200 opacity-65'} flex items-center justify-between gap-2.5">
+          <div class="flex items-center gap-2.5 min-w-0 flex-1">
+            <div class="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+              ${hasImg ? `<img src="${escapeHtml(p.image_url)}" alt="" class="w-full h-full object-cover" />` : `<span class="text-xl">${getCategoryEmoji(p.category)}</span>`}
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <h5 class="text-xs font-black text-slate-900 truncate">${escapeHtml(p.name)}</h5>
+                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded-full ${isVisible ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}">
+                  ${isVisible ? 'Exhibido' : 'Oculto'}
+                </span>
+              </div>
+              <div class="text-[10px] text-slate-500 font-semibold flex items-center gap-1.5">
+                <span class="text-orange-600 font-black">S/ ${Number(p.price || 0).toFixed(2)}</span>
+                <span>•</span>
+                <span>${escapeHtml(p.category)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1 shrink-0">
+            <button type="button" onclick="toggleProductVisibility('${safeId}', ${isVisible ? 1 : 0})" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-orange-300 text-xs cursor-pointer" title="${isVisible ? 'Ocultar de la web' : 'Mostrar en la web'}">
+              ${isVisible ? '👁️' : '🙈'}
+            </button>
+            <button type="button" onclick="editAdminProduct('${safeId}')" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-teal-300 text-xs cursor-pointer" title="Editar producto">
+              ✏️
+            </button>
+            <button type="button" onclick="deleteAdminProduct('${safeId}')" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-rose-300 text-xs cursor-pointer" title="Eliminar producto">
+              🗑️
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    container.innerHTML = `<div class="text-xs text-rose-500 text-center py-2">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function editAdminProduct(productId) {
+  const prod = adminProductsCache.find(p => String(p.id) === String(productId));
+  if (!prod) return;
+
+  document.getElementById('prod-edit-id').value = prod.id;
+  document.getElementById('prod-name').value = prod.name || '';
+  document.getElementById('prod-category').value = prod.category || 'Otros';
+  document.getElementById('prod-price').value = prod.price || 0;
+  document.getElementById('prod-description').value = prod.description || '';
+  document.getElementById('prod-image-url').value = prod.image_url || '';
+  document.getElementById('prod-visible').checked = prod.is_visible === 1 || prod.is_visible === true;
+
+  showProductImagePreview(prod.image_url || '');
+
+  const title = document.getElementById('product-form-title');
+  if (title) title.innerHTML = `<span>✏️</span> <span>Editando: ${escapeHtml(prod.name)}</span>`;
+  const cancelBtn = document.getElementById('btn-cancel-edit-prod');
+  if (cancelBtn) cancelBtn.classList.remove('hidden');
+
+  document.getElementById('admin-section-products')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function toggleProductVisibility(productId, currentVisible) {
+  try {
+    const res = await API.updateProduct(productId, { is_visible: currentVisible ? 0 : 1 });
+    showToast(res.message, 'success');
+    await loadAdminProducts();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function deleteAdminProduct(productId) {
+  if (!confirm('¿Deseas eliminar este producto permanentemente del catálogo?')) return;
+  try {
+    const res = await API.deleteProduct(productId);
+    showToast(res.message, 'success');
+    await loadAdminProducts();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadAdminStoreInfo() {
+  try {
+    const res = await API.getAdminStoreInfo();
+    const info = res.storeInfo;
+    if (!info) return;
+
+    document.getElementById('store-name').value = info.store_name || 'NIJI Perú';
+    document.getElementById('store-hero-title').value = info.hero_title || '';
+    document.getElementById('store-hero-subtitle').value = info.hero_subtitle || '';
+    document.getElementById('store-hero-image').value = info.hero_image_url || '/img/niji-logo.png';
+    document.getElementById('store-whatsapp').value = info.whatsapp_number || '';
+    document.getElementById('store-whatsapp-msg').value = info.whatsapp_message || '';
+    document.getElementById('store-address').value = info.address || '';
+    document.getElementById('store-schedule').value = info.schedule || '';
+    document.getElementById('store-maps-query').value = info.maps_query || '';
+  } catch (err) {
+    showToast('No se pudo cargar la configuración de tienda.', 'error');
+  }
+}
+
+function setupAdminStoreInfoForm() {
+  const form = document.getElementById('admin-store-info-form');
+  const heroFile = document.getElementById('store-hero-file');
+  const heroUrl = document.getElementById('store-hero-image');
+
+  if (heroFile && !heroFile.dataset.listenerAttached) {
+    heroFile.dataset.listenerAttached = 'true';
+    heroFile.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        showToast('Optimizando imagen principal...', 'info', 2000);
+        const compressed = await compressImageFile(file, 720, 0.8);
+        if (heroUrl) heroUrl.value = compressed;
+        showToast('Imagen lista para guardar.', 'success', 2000);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
+  if (!form || form.dataset.listenerAttached) return;
+  form.dataset.listenerAttached = 'true';
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-submit-store-info');
+    const payload = {
+      store_name: document.getElementById('store-name').value.trim(),
+      hero_title: document.getElementById('store-hero-title').value.trim(),
+      hero_subtitle: document.getElementById('store-hero-subtitle').value.trim(),
+      hero_image_url: document.getElementById('store-hero-image').value.trim(),
+      whatsapp_number: document.getElementById('store-whatsapp').value.trim(),
+      whatsapp_message: document.getElementById('store-whatsapp-msg').value.trim(),
+      address: document.getElementById('store-address').value.trim(),
+      schedule: document.getElementById('store-schedule').value.trim(),
+      maps_query: document.getElementById('store-maps-query').value.trim()
+    };
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span> <span>Guardando...</span>';
+
+    try {
+      const res = await API.updateAdminStoreInfo(payload);
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(err.message || 'Error al guardar información de tienda.', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span>💾 Guardar Información de Tienda</span>';
+    }
+  });
+}
+
 // Exponer funciones globales para eventos inline del DOM
+window.openLoyaltyApp = openLoyaltyApp;
+window.filterLandingCategory = filterLandingCategory;
 window.downloadClientsCSV = downloadClientsCSV;
 window.setClientsFilter = setClientsFilter;
 window.deactivateAdminPromotion = deactivateAdminPromotion;
+window.editAdminProduct = editAdminProduct;
+window.resetProductForm = resetProductForm;
+window.clearProductImage = clearProductImage;
+window.toggleProductVisibility = toggleProductVisibility;
+window.deleteAdminProduct = deleteAdminProduct;
+window.loadAdminProducts = loadAdminProducts;

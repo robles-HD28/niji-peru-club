@@ -43,6 +43,44 @@ function seed() {
         insertPrize.run(prize.title, prize.description, prize.type, prize.value, prize.color, prize.text_color, prize.weight);
       }
     }
+
+    // Inicializar productos iniciales en SQLite si está vacío
+    const prodCount = db.prepare('SELECT COUNT(*) as count FROM products').get()?.count || 0;
+    if (prodCount === 0) {
+      const insertProd = db.prepare(`
+        INSERT INTO products (name, category, price, description, image_url, is_visible)
+        VALUES (?, ?, ?, ?, ?, 1)
+      `);
+      const defaultProds = [
+        ['Cuchareable Choco-Lúcuma', 'Cuchareables', 14.00, 'Bizcocho húmedo de chocolate belga, mousse suave de lúcuma peruana y topping crocante.', ''],
+        ['Cuchareable Tres Leches Berry', 'Cuchareables', 13.50, 'Clásico tres leches cremoso acompañado de compota artesanal de frutos rojos.', ''],
+        ['Raspadilla Artesanal Clásica', 'Raspadillas', 8.00, 'Hielo granizado súper fino con jarabes de fruta 100% natural: fresa, maracuyá o mango.', ''],
+        ['Raspadilla Especial NIJI Mix', 'Raspadillas', 11.00, 'Doble sabor frutal con leche condensada, jalea dulce y trozos de fruta fresca.', ''],
+        ['Pack Mochis Kawaii (x3)', 'Postres', 12.00, 'Suaves bocaditos japoneses rellenos de crema pastelera, matcha y fresa.', '']
+      ];
+      for (const p of defaultProds) {
+        insertProd.run(...p);
+      }
+    }
+
+    // Inicializar store_info en SQLite si no existe
+    const infoExists = db.prepare("SELECT id FROM store_info WHERE id = 'main'").get();
+    if (!infoExists) {
+      db.prepare(`
+        INSERT INTO store_info (id, store_name, hero_title, hero_subtitle, hero_image_url, whatsapp_number, whatsapp_message, address, schedule, maps_query)
+        VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'NIJI Perú',
+        '¡Endulza tu día con el auténtico sabor kawaii!',
+        'Descubre nuestros cuchareables artesanales, raspadillas refrescantes y postres únicos preparados cada día para ti.',
+        '/img/niji-logo.png',
+        '51999999999',
+        '¡Hola NIJI Perú! Quisiera hacer un pedido o consultar sobre sus productos.',
+        'Av. Principal 123, Lima, Perú',
+        'Lun - Dom: 12:00 PM - 9:00 PM',
+        'Lima, Peru'
+      );
+    }
   } catch (seedErr) {
     console.warn('ℹ️ Seed SQLite omitido en entorno serverless.');
   }

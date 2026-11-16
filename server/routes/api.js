@@ -7,6 +7,7 @@ const wheelController = require('../controllers/wheelController');
 const stampsController = require('../controllers/stampsController');
 const adminController = require('../controllers/adminController');
 const promoController = require('../controllers/promoController');
+const storeController = require('../controllers/storeController');
 
 // ================= Rutas de Autenticación =================
 // Registro de Cliente
@@ -58,5 +59,19 @@ router.get('/promotions/active', promoController.getActivePromotions);
 router.get('/admin/promotions', authenticateToken, requireRole('admin'), promoController.getAllPromotions);
 router.post('/admin/promotions', authenticateToken, requireRole('admin'), promoController.createPromotion);
 router.delete('/admin/promotions/:id', authenticateToken, requireRole('admin'), promoController.deletePromotion);
+
+// ================= Landing Page, Catálogo de Productos & Info Tienda =================
+// Público: Landing Page (Productos visibles, promociones activas, WhatsApp, dirección y mapa)
+router.get('/store/landing', storeController.getLandingData);
+
+// Admin: Gestión de Productos
+router.get('/admin/products', authenticateToken, requireRole('admin'), storeController.getAdminProducts);
+router.post('/admin/products', authenticateToken, requireRole('admin'), storeController.createProduct);
+router.put('/admin/products/:id', authenticateToken, requireRole('admin'), storeController.updateProduct);
+router.delete('/admin/products/:id', authenticateToken, requireRole('admin'), storeController.deleteProduct);
+
+// Admin: Gestión de Información Básica de Tienda & Mapa
+router.get('/admin/store-info', authenticateToken, requireRole('admin'), storeController.getAdminStoreInfo);
+router.put('/admin/store-info', authenticateToken, requireRole('admin'), storeController.updateAdminStoreInfo);
 
 module.exports = router;
