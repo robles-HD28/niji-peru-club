@@ -488,7 +488,7 @@ function renderLandingProductCards(products, waRaw) {
         <div>
           <div class="h-48 bg-gradient-to-br from-orange-50 via-rose-50 to-teal-50 relative overflow-hidden flex items-center justify-center">
             ${hasImg ? `
-              <img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.name)}" class="w-full h-full object-cover" />
+              <img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.name)}" loading="lazy" class="w-full h-full object-cover" />
             ` : `
               <span class="text-6xl select-none">${getCategoryEmoji(p.category)}</span>
             `}
@@ -1529,9 +1529,19 @@ async function renderAdminDashboardView(container) {
           <!-- Lista de Productos del Catálogo -->
           <div class="md:col-span-7 glass-panel p-4 rounded-3xl space-y-2.5">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-black text-slate-800">Catálogo Actual (Edita fotos, precios y visibilidad)</span>
+              <span class="text-xs font-black text-slate-800">Catálogo de Productos (Elige cuáles exhibir)</span>
               <button onclick="loadAdminProducts()" class="text-[10px] text-orange-600 font-bold hover:underline">Refrescar</button>
             </div>
+
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input type="text" id="admin-prod-search" oninput="renderAdminProductsList()" placeholder="🔍 Buscar producto..." class="glass-input flex-1 px-3 py-1.5 rounded-xl text-xs" />
+              <div class="flex items-center gap-1 text-[10px] font-bold">
+                <button type="button" id="prod-filter-all" onclick="setAdminProductFilter('all')" class="px-2.5 py-1.5 rounded-xl bg-orange-500 text-white cursor-pointer">Todos</button>
+                <button type="button" id="prod-filter-visible" onclick="setAdminProductFilter('visible')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer">Exhibidos</button>
+                <button type="button" id="prod-filter-hidden" onclick="setAdminProductFilter('hidden')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer">Ocultos</button>
+              </div>
+            </div>
+
             <div id="admin-products-list" class="space-y-2 max-h-[520px] overflow-y-auto pr-1">
               <div class="text-center py-4 text-xs text-slate-400">Cargando productos...</div>
             </div>
@@ -2312,6 +2322,24 @@ function resetProductForm() {
   clearProductImage();
 }
 
+let adminProductFilter = 'all';
+
+function setAdminProductFilter(filter) {
+  adminProductFilter = filter;
+  const btns = {
+    all: document.getElementById('prod-filter-all'),
+    visible: document.getElementById('prod-filter-visible'),
+    hidden: document.getElementById('prod-filter-hidden')
+  };
+  Object.keys(btns).forEach(k => {
+    if (!btns[k]) return;
+    btns[k].className = k === filter
+      ? 'px-2.5 py-1.5 rounded-xl bg-orange-500 text-white cursor-pointer'
+      : 'px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer';
+  });
+  renderAdminProductsList();
+}
+
 async function loadAdminProducts() {
   const container = document.getElementById('admin-products-list');
   if (!container) return;
@@ -2320,55 +2348,72 @@ async function loadAdminProducts() {
     const res = await API.getAdminProducts();
     const products = res.products || [];
     adminProductsCache = products;
-
-    if (products.length === 0) {
-      container.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 font-medium">Aún no hay productos en el catálogo.</div>';
-      return;
-    }
-
-    container.innerHTML = products.map(p => {
-      const safeId = String(p.id).replace(/'/g, "\\'");
-      const isVisible = p.is_visible === 1 || p.is_visible === true;
-      const hasImg = Boolean(p.image_url && p.image_url.trim() !== '');
-
-      return `
-        <div class="p-3 rounded-2xl border ${isVisible ? 'bg-slate-50 border-slate-200/80' : 'bg-slate-100/70 border-slate-200 opacity-65'} flex items-center justify-between gap-2.5">
-          <div class="flex items-center gap-2.5 min-w-0 flex-1">
-            <div class="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-              ${hasImg ? `<img src="${escapeHtml(p.image_url)}" alt="" class="w-full h-full object-cover" />` : `<span class="text-xl">${getCategoryEmoji(p.category)}</span>`}
-            </div>
-            <div class="min-w-0">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <h5 class="text-xs font-black text-slate-900 truncate">${escapeHtml(p.name)}</h5>
-                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded-full ${isVisible ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}">
-                  ${isVisible ? 'Exhibido' : 'Oculto'}
-                </span>
-              </div>
-              <div class="text-[10px] text-slate-500 font-semibold flex items-center gap-1.5">
-                <span class="text-orange-600 font-black">S/ ${Number(p.price || 0).toFixed(2)}</span>
-                <span>•</span>
-                <span>${escapeHtml(p.category)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-1 shrink-0">
-            <button type="button" onclick="toggleProductVisibility('${safeId}', ${isVisible ? 1 : 0})" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-orange-300 text-xs cursor-pointer" title="${isVisible ? 'Ocultar de la web' : 'Mostrar en la web'}">
-              ${isVisible ? '👁️' : '🙈'}
-            </button>
-            <button type="button" onclick="editAdminProduct('${safeId}')" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-teal-300 text-xs cursor-pointer" title="Editar producto">
-              ✏️
-            </button>
-            <button type="button" onclick="deleteAdminProduct('${safeId}')" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-rose-300 text-xs cursor-pointer" title="Eliminar producto">
-              🗑️
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
+    renderAdminProductsList();
   } catch (err) {
     container.innerHTML = `<div class="text-xs text-rose-500 text-center py-2">${escapeHtml(err.message)}</div>`;
   }
+}
+
+function renderAdminProductsList() {
+  const container = document.getElementById('admin-products-list');
+  if (!container) return;
+
+  const query = (document.getElementById('admin-prod-search')?.value || '').trim().toLowerCase();
+  let filtered = adminProductsCache.filter(p => {
+    const isVis = p.is_visible === 1 || p.is_visible === true;
+    if (adminProductFilter === 'visible' && !isVis) return false;
+    if (adminProductFilter === 'hidden' && isVis) return false;
+    if (query) {
+      return (p.name || '').toLowerCase().includes(query) || (p.category || '').toLowerCase().includes(query);
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 font-medium">No se encontraron productos con ese filtro.</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(p => {
+    const safeId = String(p.id).replace(/'/g, "\\'");
+    const isVisible = p.is_visible === 1 || p.is_visible === true;
+    const hasImg = Boolean(p.image_url && p.image_url.trim() !== '');
+
+    return `
+      <div class="p-3 rounded-2xl border ${isVisible ? 'bg-slate-50 border-slate-200/80' : 'bg-slate-100/70 border-slate-200 opacity-65'} flex items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2.5 min-w-0 flex-1">
+          <div class="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+            ${hasImg ? `<img src="${escapeHtml(p.image_url)}" alt="" loading="lazy" class="w-full h-full object-cover" />` : `<span class="text-xl">${getCategoryEmoji(p.category)}</span>`}
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <h5 class="text-xs font-black text-slate-900 truncate">${escapeHtml(p.name)}</h5>
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded-full ${isVisible ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}">
+                ${isVisible ? 'Exhibido' : 'Oculto'}
+              </span>
+            </div>
+            <div class="text-[10px] text-slate-500 font-semibold flex items-center gap-1.5">
+              <span class="text-orange-600 font-black">S/ ${Number(p.price || 0).toFixed(2)}</span>
+              <span>•</span>
+              <span>${escapeHtml(p.category)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1 shrink-0">
+          <button type="button" onclick="toggleProductVisibility('${safeId}', ${isVisible ? 1 : 0})" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-orange-300 text-xs cursor-pointer" title="${isVisible ? 'Ocultar de la web' : 'Mostrar en la web'}">
+            ${isVisible ? '👁️' : '🙈'}
+          </button>
+          <button type="button" onclick="editAdminProduct('${safeId}')" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-teal-300 text-xs cursor-pointer" title="Editar producto">
+            ✏️
+          </button>
+          <button type="button" onclick="deleteAdminProduct('${safeId}')" class="p-1.5 rounded-lg bg-white border border-slate-200 hover:border-rose-300 text-xs cursor-pointer" title="Eliminar producto">
+            🗑️
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function editAdminProduct(productId) {
@@ -2502,3 +2547,5 @@ window.clearProductImage = clearProductImage;
 window.toggleProductVisibility = toggleProductVisibility;
 window.deleteAdminProduct = deleteAdminProduct;
 window.loadAdminProducts = loadAdminProducts;
+window.setAdminProductFilter = setAdminProductFilter;
+window.renderAdminProductsList = renderAdminProductsList;

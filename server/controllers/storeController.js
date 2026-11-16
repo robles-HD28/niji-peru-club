@@ -371,8 +371,52 @@ async function updateAdminStoreInfo(req, res) {
   }
 }
 
+/**
+ * Servir imagen binaria de un producto directamente (evita respuestas JSON de varios MB en Vercel)
+ */
+async function getProductImage(req, res) {
+  try {
+    const { id } = req.params;
+    let rawImg = '';
+
+    if (firestore.isFirestoreConfigured()) {
+      const prod = await firestore.getProductRawById(id);
+      if (prod) {
+        rawImg = prod.image_url || prod.photo_url || '';
+      }
+    } else {
+      const prod = db.prepare('SELECT image_url FROM products WHERE id = ?').get(id);
+      if (prod) rawImg = prod.image_url || '';
+    }
+
+    if (!rawImg) {
+      return res.redirect('/img/niji-logo.png');
+    }
+
+    if (/^https?:\/\//i.test(rawImg)) {
+      return res.redirect(rawImg);
+    }
+
+    const match = rawImg.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) {
+      return res.redirect('/img/niji-logo.png');
+    }
+
+    const mimeType = match[1];
+    const buffer = Buffer.from(match[2], 'base64');
+
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.status(200).send(buffer);
+  } catch (err) {
+    console.error('Error en getProductImage:', err.message);
+    return res.redirect('/img/niji-logo.png');
+  }
+}
+
 module.exports = {
   getLandingData,
+  getProductImage,
   getAdminProducts,
   createProduct,
   updateProduct,

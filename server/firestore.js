@@ -422,9 +422,51 @@ const DEFAULT_PRODUCTS = [
   }
 ];
 
+function inferProductCategory(name, existingCategory) {
+  if (existingCategory && existingCategory.trim()) return existingCategory.trim();
+  const n = String(name || '').toLowerCase();
+  if (/cuchareable|cheesecake|tres leches|torta|\bmochis?\b|promoci[oó]n de 2x/i.test(n)) return 'Cuchareables';
+  if (/raspadilla/i.test(n)) return 'Raspadillas';
+  if (/postre|dulce|helado/i.test(n)) return 'Postres';
+  if (/mikes|agua|volt|sporade|cifrut|cerveza|\bkr\b|guaran[aá]|bebida|gaseosa|jugo/i.test(n)) return 'Bebidas';
+  return 'Otros';
+}
+
+function normalizeProductDoc(p, useImageEndpoint = true) {
+  const category = inferProductCategory(p.name, p.category);
+  let isVisible;
+  if (p.is_visible !== undefined && p.is_visible !== null) {
+    isVisible = (p.is_visible === 1 || p.is_visible === true) ? 1 : 0;
+  } else {
+    // Por defecto exhibir automáticamente los comestibles principales (Cuchareables, Raspadillas, Postres)
+    isVisible = (category === 'Cuchareables' || category === 'Raspadillas' || category === 'Postres') ? 1 : 0;
+  }
+
+  const rawImg = p.image_url || p.photo_url || '';
+  let imageUrl = rawImg;
+  if (useImageEndpoint && rawImg.startsWith('data:image/')) {
+    imageUrl = `/api/store/product-image/${encodeURIComponent(p.id)}?v=${encodeURIComponent(p.updated_at || '1')}`;
+  }
+
+  return {
+    id: p.id,
+    name: p.name || '',
+    category,
+    price: Number(p.price) || 0,
+    description: p.description || '',
+    image_url: imageUrl,
+    is_visible: isVisible,
+    stock: p.stock !== undefined ? Number(p.stock) : 0,
+    created_at: p.created_at || '',
+    updated_at: p.updated_at || ''
+  };
+}
+
 async function getAllProducts(forceRefresh = false) {
-  const products = await queryCollection('landing_products', forceRefresh);
-  return products.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const products = await queryCollection('products', forceRefresh);
+  return products
+    .map(p => normalizeProductDoc(p, true))
+    .sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0));
 }
 
 async function getVisibleProducts(forceRefresh = false) {
@@ -432,41 +474,58 @@ async function getVisibleProducts(forceRefresh = false) {
   return all.filter(p => p.is_visible === 1 || p.is_visible === true);
 }
 
+async function getProductRawById(productId) {
+  return await getDoc('products', productId);
+}
+
 async function createProduct(productObj) {
   const now = new Date().toISOString();
-  const res = await addDoc('landing_products', {
+  const img = productObj.image_url || '';
+  const res = await addDoc('products', {
     name: productObj.name,
-    category: productObj.category || 'Otros',
+    category: productObj.category || inferProductCategory(productObj.name, ''),
     price: Number(productObj.price) || 0,
+    cost: Number(productObj.cost) || 0,
+    stock: productObj.stock !== undefined ? Number(productObj.stock) : 10,
     description: productObj.description || '',
-    image_url: productObj.image_url || '',
+    image_url: img,
+    photo_url: img,
     is_visible: productObj.is_visible !== undefined ? (productObj.is_visible ? 1 : 0) : 1,
     created_at: now,
     updated_at: now
   });
-  invalidateCache('landing_products');
-  return res;
+  invalidateCache('products');
+  return normalizeProductDoc(res, true);
 }
 
 async function updateProduct(productId, updates) {
-  const all = await queryCollection('landing_products', true);
-  const existing = all.find(p => String(p.id) === String(productId));
+  const existing = await getDoc('products', productId);
   if (!existing) return null;
+
+  const cleanUpdates = { ...updates };
+  if (cleanUpdates.image_url !== undefined) {
+    if (String(cleanUpdates.image_url).startsWith('/api/store/product-image/')) {
+      // Conservar la imagen original en Base64 si el admin no subió una nueva
+      delete cleanUpdates.image_url;
+    } else {
+      cleanUpdates.photo_url = cleanUpdates.image_url;
+    }
+  }
 
   const merged = {
     ...existing,
-    ...updates,
+    ...cleanUpdates,
     updated_at: new Date().toISOString()
   };
   delete merged.id;
-  await setDoc('landing_products', existing.id, merged);
-  invalidateCache('landing_products');
-  return { id: existing.id, ...merged };
+  await setDoc('products', existing.id, merged);
+  invalidateCache('products');
+  return normalizeProductDoc({ id: existing.id, ...merged }, true);
 }
 
 async function deleteProduct(productId) {
-  const res = await deleteDoc('landing_products', productId);
-  invalidateCache('landing_products');
+  const res = await deleteDoc('products', productId);
+  invalidateCache('products');
   return res;
 }
 
@@ -559,16 +618,16 @@ async function initFirestoreDatabase() {
       }
     }
 
-    // Inicializar productos iniciales solo si no existe ninguno en la colección landing_products
-    const existingProducts = await queryCollection('landing_products');
+    // Inicializar productos iniciales solo si la colección products está vacía
+    const existingProducts = await queryCollection('products');
     if (existingProducts.length === 0) {
-      console.log('🍨 Sembrando catálogo inicial de productos NIJI Perú en Firestore (landing_products)...');
+      console.log('🍨 Sembrando catálogo inicial de productos NIJI Perú en Firestore...');
       const now = new Date().toISOString();
       for (const prod of DEFAULT_PRODUCTS) {
         const { id, ...prodData } = prod;
-        await setDoc('landing_products', id, { ...prodData, created_at: now, updated_at: now });
+        await setDoc('products', id, { ...prodData, created_at: now, updated_at: now });
       }
-      invalidateCache('landing_products');
+      invalidateCache('products');
     }
 
     // Asegurar documento de información básica de tienda y migrar placeholders si aún existen
@@ -613,6 +672,7 @@ module.exports = {
   deletePromotion,
   getAllProducts,
   getVisibleProducts,
+  getProductRawById,
   createProduct,
   updateProduct,
   deleteProduct,

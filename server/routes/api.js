@@ -63,6 +63,7 @@ router.delete('/admin/promotions/:id', authenticateToken, requireRole('admin'), 
 // ================= Landing Page, Catálogo de Productos & Info Tienda =================
 // Público: Landing Page (Productos visibles, promociones activas, WhatsApp, dirección y mapa)
 router.get('/store/landing', storeController.getLandingData);
+router.get('/store/product-image/:id', storeController.getProductImage);
 
 // Admin: Gestión de Productos
 router.get('/admin/products', authenticateToken, requireRole('admin'), storeController.getAdminProducts);
