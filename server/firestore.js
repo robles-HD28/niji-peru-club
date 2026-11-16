@@ -366,11 +366,12 @@ const DEFAULT_STORE_INFO = {
   hero_title: '¡Endulza tu día con el auténtico sabor kawaii!',
   hero_subtitle: 'Descubre nuestros cuchareables artesanales, raspadillas refrescantes y postres únicos preparados cada día para ti.',
   hero_image_url: '/img/niji-logo.png',
-  whatsapp_number: '51999999999',
+  whatsapp_number: 'https://wa.me/message/5WW2JMTOWA47J1',
   whatsapp_message: '¡Hola NIJI Perú! Quisiera hacer un pedido o consultar sobre sus productos.',
-  address: 'Av. Principal 123, Lima, Perú',
+  address: 'Piura 20009, Perú — NIJI Perú',
   schedule: 'Lun - Dom: 12:00 PM - 9:00 PM',
-  maps_query: 'Lima, Peru'
+  maps_query: 'Niji Perú, Piura 20009',
+  maps_url: 'https://maps.app.goo.gl/qbLnkaY5zTVMrvTG9?g_st=aw'
 };
 
 const DEFAULT_PRODUCTS = [
@@ -528,6 +529,28 @@ async function initFirestoreDatabase() {
       });
     }
 
+    const cajaUser = await getUserByPseudonym('NijiCaja26');
+    const cajaPassHash = bcrypt.hashSync('Caja#Niji2026', salt);
+
+    if (!cajaUser) {
+      console.log('👤 Creando cuenta oficial NijiCaja26 en Firestore...');
+      await createUser({
+        pseudonym: 'NijiCaja26',
+        email: 'caja@nijiperu.com',
+        birthdate: '2000-01-01',
+        password_hash: cajaPassHash,
+        role: 'admin',
+        stamps: 0,
+        has_spun_wheel: 1,
+        welcome_prize: 'Staff Oficial'
+      });
+    } else {
+      await updateUser('NijiCaja26', {
+        password_hash: cajaPassHash,
+        role: 'admin'
+      });
+    }
+
     const existingPrizes = await queryCollection('wheel_prizes');
     if (existingPrizes.length !== 6 || existingPrizes[0].title !== '🍧 Raspadilla' || existingPrizes[3].title !== '🍍 Sin Premio') {
       console.log('🎁 Sincronizando 6 opciones oficiales y simétricas de Ruleta en Firestore...');
@@ -548,8 +571,16 @@ async function initFirestoreDatabase() {
       invalidateCache('landing_products');
     }
 
-    // Asegurar documento de información básica de tienda
-    await getStoreInfo();
+    // Asegurar documento de información básica de tienda y migrar placeholders si aún existen
+    const currentInfo = await getStoreInfo(true);
+    if (currentInfo && (currentInfo.whatsapp_number === '51999999999' || currentInfo.address === 'Av. Principal 123, Lima, Perú')) {
+      await updateStoreInfo({
+        whatsapp_number: DEFAULT_STORE_INFO.whatsapp_number,
+        address: DEFAULT_STORE_INFO.address,
+        maps_query: DEFAULT_STORE_INFO.maps_query,
+        maps_url: DEFAULT_STORE_INFO.maps_url
+      });
+    }
 
     console.log('✅ Google Cloud Firestore conectado y listo para persistir datos 24/7.');
 

@@ -5,7 +5,7 @@ function seed() {
   initDatabase();
 
   try {
-    // Asegurar cuenta oficial de administrador NijiPeru28
+    // Asegurar cuentas oficiales de administrador (NijiPeru28 y NijiCaja26)
     const salt = bcrypt.genSaltSync(10);
     const hashAdmin = bcrypt.hashSync('Niji#2811Peru', salt);
     const existing = db.prepare("SELECT * FROM users WHERE pseudonym = 'NijiPeru28' COLLATE NOCASE").get();
@@ -17,6 +17,18 @@ function seed() {
       `).run(hashAdmin);
     } else {
       db.prepare("UPDATE users SET password_hash = ?, role = 'admin' WHERE id = ?").run(hashAdmin, existing.id);
+    }
+
+    const hashCaja = bcrypt.hashSync('Caja#Niji2026', salt);
+    const existingCaja = db.prepare("SELECT * FROM users WHERE pseudonym = 'NijiCaja26' COLLATE NOCASE").get();
+
+    if (!existingCaja) {
+      db.prepare(`
+        INSERT INTO users (pseudonym, email, birthdate, password_hash, role, stamps, has_spun_wheel, welcome_prize)
+        VALUES ('NijiCaja26', 'caja@nijiperu.com', '2000-01-01', ?, 'admin', 0, 1, 'Staff Oficial')
+      `).run(hashCaja);
+    } else {
+      db.prepare("UPDATE users SET password_hash = ?, role = 'admin' WHERE id = ?").run(hashCaja, existingCaja.id);
     }
 
     // Inicializar premios de la Ruleta Spin-to-Win oficial (exactamente 6 opciones simétricas)
@@ -67,18 +79,19 @@ function seed() {
     const infoExists = db.prepare("SELECT id FROM store_info WHERE id = 'main'").get();
     if (!infoExists) {
       db.prepare(`
-        INSERT INTO store_info (id, store_name, hero_title, hero_subtitle, hero_image_url, whatsapp_number, whatsapp_message, address, schedule, maps_query)
-        VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO store_info (id, store_name, hero_title, hero_subtitle, hero_image_url, whatsapp_number, whatsapp_message, address, schedule, maps_query, maps_url)
+        VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         'NIJI Perú',
         '¡Endulza tu día con el auténtico sabor kawaii!',
         'Descubre nuestros cuchareables artesanales, raspadillas refrescantes y postres únicos preparados cada día para ti.',
         '/img/niji-logo.png',
-        '51999999999',
+        'https://wa.me/message/5WW2JMTOWA47J1',
         '¡Hola NIJI Perú! Quisiera hacer un pedido o consultar sobre sus productos.',
-        'Av. Principal 123, Lima, Perú',
+        'Piura 20009, Perú — NIJI Perú',
         'Lun - Dom: 12:00 PM - 9:00 PM',
-        'Lima, Peru'
+        'Niji Perú, Piura 20009',
+        'https://maps.app.goo.gl/qbLnkaY5zTVMrvTG9?g_st=aw'
       );
     }
   } catch (seedErr) {

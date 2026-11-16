@@ -300,15 +300,19 @@ async function updateAdminStoreInfo(req, res) {
       whatsapp_message,
       address,
       schedule,
-      maps_query
+      maps_query,
+      maps_url
     } = req.body;
 
-    // Limpiar número de WhatsApp dejando solo dígitos
-    const cleanPhone = String(whatsapp_number || '').replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 7) {
+    // Aceptar tanto un enlace directo (https://wa.me/...) como un número telefónico
+    const rawWa = String(whatsapp_number || '').trim();
+    const isWaUrl = /^https?:\/\/(wa\.me|api\.whatsapp\.com)\//i.test(rawWa);
+    const cleanPhone = rawWa.replace(/\D/g, '');
+
+    if (!isWaUrl && (!cleanPhone || cleanPhone.length < 7)) {
       return res.status(400).json({
         success: false,
-        message: 'Ingresa un número de WhatsApp válido (incluyendo código de país, ej: 51999999999).'
+        message: 'Ingresa un enlace wa.me válido o un número de WhatsApp con código de país (ej: 51999999999).'
       });
     }
 
@@ -317,11 +321,12 @@ async function updateAdminStoreInfo(req, res) {
       hero_title: (hero_title || '¡Endulza tu día con NIJI Perú!').trim(),
       hero_subtitle: (hero_subtitle || '').trim(),
       hero_image_url: (hero_image_url || '/img/niji-logo.png').trim(),
-      whatsapp_number: cleanPhone,
+      whatsapp_number: isWaUrl ? rawWa : cleanPhone,
       whatsapp_message: (whatsapp_message || '¡Hola NIJI Perú!').trim(),
       address: (address || '').trim(),
       schedule: (schedule || '').trim(),
-      maps_query: (maps_query || address || 'Lima, Peru').trim()
+      maps_query: (maps_query || address || 'Niji Perú, Piura 20009').trim(),
+      maps_url: (maps_url || '').trim()
     };
 
     let updated = null;
@@ -331,22 +336,22 @@ async function updateAdminStoreInfo(req, res) {
       const existing = db.prepare("SELECT id FROM store_info WHERE id = 'main'").get();
       if (!existing) {
         db.prepare(`
-          INSERT INTO store_info (id, store_name, hero_title, hero_subtitle, hero_image_url, whatsapp_number, whatsapp_message, address, schedule, maps_query)
-          VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO store_info (id, store_name, hero_title, hero_subtitle, hero_image_url, whatsapp_number, whatsapp_message, address, schedule, maps_query, maps_url)
+          VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           updates.store_name, updates.hero_title, updates.hero_subtitle,
           updates.hero_image_url, updates.whatsapp_number, updates.whatsapp_message,
-          updates.address, updates.schedule, updates.maps_query
+          updates.address, updates.schedule, updates.maps_query, updates.maps_url
         );
       } else {
         db.prepare(`
           UPDATE store_info
-          SET store_name = ?, hero_title = ?, hero_subtitle = ?, hero_image_url = ?, whatsapp_number = ?, whatsapp_message = ?, address = ?, schedule = ?, maps_query = ?, updated_at = datetime('now', 'localtime')
+          SET store_name = ?, hero_title = ?, hero_subtitle = ?, hero_image_url = ?, whatsapp_number = ?, whatsapp_message = ?, address = ?, schedule = ?, maps_query = ?, maps_url = ?, updated_at = datetime('now', 'localtime')
           WHERE id = 'main'
         `).run(
           updates.store_name, updates.hero_title, updates.hero_subtitle,
           updates.hero_image_url, updates.whatsapp_number, updates.whatsapp_message,
-          updates.address, updates.schedule, updates.maps_query
+          updates.address, updates.schedule, updates.maps_query, updates.maps_url
         );
       }
       updated = db.prepare("SELECT * FROM store_info WHERE id = 'main'").get();

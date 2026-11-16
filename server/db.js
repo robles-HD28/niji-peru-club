@@ -141,9 +141,14 @@ function initDatabase() {
         address TEXT NOT NULL,
         schedule TEXT NOT NULL,
         maps_query TEXT NOT NULL,
+        maps_url TEXT DEFAULT '',
         updated_at TEXT DEFAULT (datetime('now', 'localtime'))
       );
     `);
+
+    try {
+      db.exec(`ALTER TABLE store_info ADD COLUMN maps_url TEXT DEFAULT '';`);
+    } catch (e) {}
 
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_users_pseudonym ON users(pseudonym);

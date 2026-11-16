@@ -231,6 +231,15 @@ let landingState = {
 /* ==========================================================================
    VISTA 0: LANDING PAGE COMERCIAL NIJI PERÚ (CATÁLOGO, PRECIOS, WSP Y MAPA)
    ========================================================================== */
+function buildWhatsAppUrl(waValue, textMsg = '') {
+  const val = String(waValue || 'https://wa.me/message/5WW2JMTOWA47J1').trim();
+  if (/^https?:\/\//i.test(val)) {
+    return val;
+  }
+  const digits = val.replace(/\D/g, '') || '51999999999';
+  return textMsg ? `https://wa.me/${digits}?text=${encodeURIComponent(textMsg)}` : `https://wa.me/${digits}`;
+}
+
 async function renderLandingPageView(container) {
   container.innerHTML = `
     <div class="flex flex-col items-center justify-center py-24 text-slate-400">
@@ -250,12 +259,11 @@ async function renderLandingPageView(container) {
     const products = landingState.products;
     const promos = landingState.promotions;
 
-    const cleanWa = String(info.whatsapp_number || '51999999999').replace(/\D/g, '');
-    const defaultWaMsg = encodeURIComponent(info.whatsapp_message || '¡Hola NIJI Perú! Quisiera hacer un pedido.');
-    const waBaseUrl = `https://wa.me/${cleanWa}?text=${defaultWaMsg}`;
-    const mapsQuery = encodeURIComponent(info.maps_query || info.address || 'Lima, Peru');
+    const waRaw = info.whatsapp_number || 'https://wa.me/message/5WW2JMTOWA47J1';
+    const waBaseUrl = buildWhatsAppUrl(waRaw, info.whatsapp_message || '¡Hola NIJI Perú! Quisiera hacer un pedido.');
+    const mapsQuery = encodeURIComponent(info.maps_query || info.address || 'Niji Perú, Piura 20009');
     const mapsEmbedUrl = `https://maps.google.com/maps?q=${mapsQuery}&t=&z=16&ie=UTF8&iwloc=&output=embed`;
-    const mapsExternalUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+    const mapsExternalUrl = (info.maps_url && info.maps_url.trim()) ? info.maps_url.trim() : `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
 
     // Obtener categorías únicas
     const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category || 'Otros')))];
@@ -362,7 +370,7 @@ async function renderLandingPageView(container) {
           </div>
 
           <div id="landing-products-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            ${renderLandingProductCards(products, cleanWa)}
+            ${renderLandingProductCards(products, waRaw)}
           </div>
         </section>
 
@@ -463,7 +471,7 @@ async function renderLandingPageView(container) {
   }
 }
 
-function renderLandingProductCards(products, cleanWa) {
+function renderLandingProductCards(products, waRaw) {
   if (!products || products.length === 0) {
     return `
       <div class="col-span-full text-center py-12 bg-white rounded-3xl border border-dashed border-slate-200 text-slate-400 text-sm font-medium">
@@ -474,8 +482,7 @@ function renderLandingProductCards(products, cleanWa) {
 
   return products.map(p => {
     const priceFormatted = `S/ ${Number(p.price || 0).toFixed(2)}`;
-    const prodMsg = encodeURIComponent(`¡Hola NIJI Perú! Me gustaría pedir: ${p.name} (${priceFormatted}).`);
-    const waLink = `https://wa.me/${cleanWa}?text=${prodMsg}`;
+    const waLink = buildWhatsAppUrl(waRaw, `¡Hola NIJI Perú! Me gustaría pedir: ${p.name} (${priceFormatted}).`);
     const hasImg = Boolean(p.image_url && p.image_url.trim() !== '');
 
     return `
@@ -527,12 +534,12 @@ function filterLandingCategory(category) {
   const grid = document.getElementById('landing-products-grid');
   if (!grid) return;
 
-  const cleanWa = String(landingState.storeInfo?.whatsapp_number || '51999999999').replace(/\D/g, '');
+  const waRaw = landingState.storeInfo?.whatsapp_number || 'https://wa.me/message/5WW2JMTOWA47J1';
   const filtered = category === 'Todos'
     ? landingState.products
     : landingState.products.filter(p => (p.category || 'Otros') === category);
 
-  grid.innerHTML = renderLandingProductCards(filtered, cleanWa);
+  grid.innerHTML = renderLandingProductCards(filtered, waRaw);
 }
 
 /* ==========================================================================
@@ -1565,10 +1572,10 @@ async function renderAdminDashboardView(container) {
               <input type="text" id="store-hero-image" placeholder="/img/niji-logo.png o https://..." class="glass-input w-full px-3 py-1.5 rounded-xl text-[11px]" />
             </div>
 
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
-                <label class="block text-[11px] font-bold text-slate-700 mb-1">WhatsApp (con 51)</label>
-                <input type="text" id="store-whatsapp" required placeholder="51999999999" class="glass-input w-full px-3 py-2 rounded-xl text-xs font-mono" />
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">WhatsApp (Link wa.me o Número con 51)</label>
+                <input type="text" id="store-whatsapp" required placeholder="https://wa.me/message/..." class="glass-input w-full px-3 py-2 rounded-xl text-xs font-mono" />
               </div>
               <div>
                 <label class="block text-[11px] font-bold text-slate-700 mb-1">Horario de Atención</label>
@@ -1583,13 +1590,17 @@ async function renderAdminDashboardView(container) {
 
             <div>
               <label class="block text-[11px] font-bold text-slate-700 mb-1">Dirección visible en la web</label>
-              <input type="text" id="store-address" required placeholder="Av. Larco 123, Miraflores, Lima" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
+              <input type="text" id="store-address" required placeholder="Piura 20009, Perú — NIJI Perú" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
             </div>
 
             <div>
-              <label class="block text-[11px] font-bold text-slate-700 mb-1">Ubicación exacta para el Mapa (Dirección o Coordenadas)</label>
-              <input type="text" id="store-maps-query" placeholder="ej. -12.1219,-77.0297 o Av. Larco 123, Miraflores" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
-              <p class="text-[10px] text-slate-400 mt-0.5">El mapa interactivo de la web se actualizará automáticamente con este dato.</p>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Ubicación exacta para el Mapa embebido</label>
+              <input type="text" id="store-maps-query" placeholder="Niji Perú, Piura 20009" class="glass-input w-full px-3 py-2 rounded-xl text-xs" />
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">Enlace directo de Google Maps (Botón Abrir Mapa)</label>
+              <input type="text" id="store-maps-url" placeholder="https://maps.app.goo.gl/..." class="glass-input w-full px-3 py-2 rounded-xl text-xs font-mono" />
             </div>
 
             <button type="submit" id="btn-submit-store-info" class="btn-teal w-full py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer">
@@ -2418,6 +2429,7 @@ async function loadAdminStoreInfo() {
     document.getElementById('store-address').value = info.address || '';
     document.getElementById('store-schedule').value = info.schedule || '';
     document.getElementById('store-maps-query').value = info.maps_query || '';
+    document.getElementById('store-maps-url').value = info.maps_url || '';
   } catch (err) {
     showToast('No se pudo cargar la configuración de tienda.', 'error');
   }
@@ -2459,7 +2471,8 @@ function setupAdminStoreInfoForm() {
       whatsapp_message: document.getElementById('store-whatsapp-msg').value.trim(),
       address: document.getElementById('store-address').value.trim(),
       schedule: document.getElementById('store-schedule').value.trim(),
-      maps_query: document.getElementById('store-maps-query').value.trim()
+      maps_query: document.getElementById('store-maps-query').value.trim(),
+      maps_url: document.getElementById('store-maps-url').value.trim()
     };
 
     btn.disabled = true;
